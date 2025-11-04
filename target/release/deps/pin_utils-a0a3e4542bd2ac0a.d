@@ -1,0 +1,9 @@
+C:\Users\ngkai\.vscode\roli-trade-ad-automation\target\release\deps\pin_utils-a0a3e4542bd2ac0a.d: C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\lib.rs C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\stack_pin.rs C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\projection.rs
+
+C:\Users\ngkai\.vscode\roli-trade-ad-automation\target\release\deps\libpin_utils-a0a3e4542bd2ac0a.rlib: C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\lib.rs C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\stack_pin.rs C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\projection.rs
+
+C:\Users\ngkai\.vscode\roli-trade-ad-automation\target\release\deps\libpin_utils-a0a3e4542bd2ac0a.rmeta: C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\lib.rs C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\stack_pin.rs C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\projection.rs
+
+C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\lib.rs:
+C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\stack_pin.rs:
+C:\Users\ngkai\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pin-utils-0.1.0\src\projection.rs:
