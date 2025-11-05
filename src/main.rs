@@ -4,9 +4,7 @@
 use anyhow::Result;
 use clap::Parser;
 use rand::Rng;
-mod cookie;
 mod trade_ad;
-use crate::cookie::*;
 use crate::trade_ad::*;
 use roli::ClientBuilder;
 
@@ -37,14 +35,6 @@ struct Args {
     #[arg(long)]
     roli_verification: Option<String>,
 
-    /// Chrome user-data dir OR a profile dir
-    #[arg(long)]
-    chrome_user_data: Option<std::path::PathBuf>,
-
-    /// Direct path to the Cookies DB
-    #[arg(long)]
-    cookies_path: Option<std::path::PathBuf>,
-
     /// Print cookie only; do not post
     #[arg(long, default_value_t = false)]
     print_only: bool,
@@ -60,49 +50,21 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     println!("[DEBUG] Args: {:?}", args);
 
-    println!("[DEBUG] Resolving Chrome user data directory");
-    let user_data_dir = args
-        .chrome_user_data
-        .clone()
-        .unwrap_or_else(get_chrome_user_data_dir);
-    println!("[DEBUG] user_data_dir: {}", user_data_dir.display());
-
-    println!("[DEBUG] Resolving cookies DB path");
-    let cookies_db = match resolve_cookies_db(&user_data_dir, &args.cookies_path) {
-        Ok(path) => {
-            println!("[DEBUG] cookies_db: {}", path.display());
-            path
-        }
-        Err(e) => {
-            eprintln!("[ERROR] Failed to resolve cookies DB: {e}");
-            return Err(e);
-        }
-    };
-
     let token = if let Some(cookie) = &args.roli_verification {
         println!("[DEBUG] Using roli_verification from CLI");
         cookie.clone()
     } else {
-        println!("[DEBUG] Extracting roli_verification cookie");
-        match extract_roli_verification_from_chrome(&user_data_dir, &cookies_db) {
-            Ok(Some(cookie)) => {
-                println!("[DEBUG] roli_verification: {}", mask_token(&cookie));
-                cookie
-            }
-            _ => {
-                use std::io::Write;
-                print!("Enter your _RoliVerification cookie value: ");
-                std::io::stdout().flush().ok();
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input).ok();
-                let input = input.trim().to_string();
-                if input.is_empty() {
-                    eprintln!("[ERROR] No cookie value provided");
-                    return Err(anyhow::anyhow!("No roli_verification cookie provided"));
-                }
-                input
-            }
+        use std::io::Write;
+        print!("Enter your _RoliVerification cookie value: ");
+        std::io::stdout().flush().ok();
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).ok();
+        let input = input.trim().to_string();
+        if input.is_empty() {
+            eprintln!("[ERROR] No cookie value provided");
+            return Err(anyhow::anyhow!("No roli_verification cookie provided"));
         }
+        input
     };
 
     if args.print_only {

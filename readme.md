@@ -1,7 +1,4 @@
-# README.md
-
-
-## roli-trade-ad-automation (Windows 11 + Chrome)
+# roli-trade-ad-automation (Windows 11 + Chrome)
 
 This application was created for users to post trade ads even without joining a game, so they can play games while posting trade ads. Also intended to use less resources using a Rust app over a Roblox instance.
 
@@ -43,7 +40,6 @@ This project is an independent tool and is not affiliated with Roblox or the ori
 
 
 ## Security notes
-- The tool runs as **your Windows user**; Chrome cookie decryption only works for your account.
 - The `_RoliVerification` cookie is a sensitive session token. **Never share, commit, or expose it.**
 - The tool never uploads or transmits your cookie anywhere except directly to the Rolimons API endpoint you control.
 - If your session expires or you log out, simply log in again in Chrome and rerun the tool.
@@ -133,5 +129,5 @@ cargo run --release -- --player-id 1426170901 --offer-item-ids 10467173753 --req
 	- Select items from your inventory directly
 	- No need to manually enter item IDs
 	- No need to manually enter roli_verification
+	- Uses 'https://create.roblox.com/docs/cloud/legacy/users/v1#/AccountInformation/get_v1_description' for login and verification
 - [ ] **Search for items using NLP instead of item ids**
-- [ ] **Better error messages and diagnostics**
