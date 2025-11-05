@@ -97,23 +97,23 @@ FLAGS & ARGS:
 ## Examples
 **One‑shot** (single item, request any):
 ```bash
-cargo run --release -- --player-id 1426170901 --offer-item-ids 10467173753 --request-tags any
+cargo run --release -- --player-id -insert player id- --offer-item-ids -insert item id- --request-tags any
 ```
 
 
 **Legacy mode (use old roli crate, not recommended):**
 ```bash
-cargo run --release -- --player-id 1426170901 --offer-item-ids 10467173753 --request-tags any --legacy
+cargo run --release -- --player-id -insert player id- --offer-item-ids -insert item id- --request-tags any --legacy
 ```
 
 **Loop mode (post every ~20 min):**
 ```bash
-cargo run --release -- --player-id 1426170901 --offer-item-ids 10467173753 --request-tags any --loop-mode
+cargo run --release -- --player-id -insert player id- --offer-item-ids -insert item id- --request-tags any --loop-mode
 ```
 
 **Provide cookie directly (for scripting):**
 ```bash
-cargo run --release -- --player-id 1426170901 --offer-item-ids 10467173753 --request-tags any --roli-verification <cookie>
+cargo run --release -- --player-id -insert player id- --offer-item-ids -insert item id- --request-tags any --roli-verification <cookie>
 ```
 
 ---
