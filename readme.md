@@ -1,9 +1,7 @@
-
 # README.md
 
 
 ## roli-trade-ad-automation (Windows 11 + Chrome)
-A small Rust CLI that **extracts your `roli_verification` cookie from Chrome** (Windows user profile) and **posts a trade ad on Rolimons** using the `roli` crate. It can run **once** or in a **loop** (about every 20 minutes with jitter).
 
 This application was created for users to post trade ads even without joining a game, so they can play games while posting trade ads. Also intended to use less resources using a Rust app over a Roblox instance.
 
@@ -20,7 +18,7 @@ This project is an independent tool and is not affiliated with Roblox or the ori
 
 
 ## Features
-- User copies their Roli_Verification cookie from rolimons
+- User copies their Roli_Verification cookie from Rolimons (manual step)
 - 📢 Posts a trade ad via a direct API call (browser-mimic mode, default) or the legacy `roli` crate (with `--legacy`).
 - ⏱️ Two modes:
 	- **One‑shot**: post once and exit.
@@ -34,25 +32,23 @@ This project is an independent tool and is not affiliated with Roblox or the ori
 
 
 ## How it works (high level)
-1. **Extract key**: Reads `Local State` → `os_crypt.encrypted_key` (Base64) → unwrap with DPAPI.
-2. **Read Cookies**: Copies Chrome’s `Cookies` SQLite file to temp (avoid locks).
-3. **Decrypt cookie values**:
-	- For `v10`/`v11` format: AES‑GCM with the key from step 1.
-	- Else: legacy DPAPI‑encrypted cookie value.
-4. **Get `_RoliVerification`**: Use the extracted cookie, prompt, or CLI arg.
-5. **Post ad**:
-	- **Default**: Direct API call (browser-mimic, robust against site changes).
-	- **Legacy mode**: Use `--legacy` to post via the old `roli` crate (may break if the API changes).
+1. **User copies `_RoliVerification` cookie**: You must manually copy your cookie from your browser's dev tools (see Rolimons site, Application tab, Cookies section).
+2. **Provide cookie to the tool**: Paste it when prompted, or pass it via `--roli-verification` for scripting/automation.
+3. **Post trade ad**:
+   - **Default (Direct API)**: Mimics a real browser request to the Rolimons API endpoint, including all necessary headers and cookies for maximum reliability and future-proofing.
+   - **Legacy mode**: Uses the `roli` crate (may break if the API changes or if stricter anti-bot measures are introduced).
 
 
 ---
 
 
 ## Security notes
-- Runs as **your Windows user**; DPAPI decryption works only for that user.
-- The `roli_verification` acts like a session token. **Do not commit logs or outputs that reveal it.**
-- If tokens rotate/expire, just keep Chrome logged in (same profile) or re‑log in; the tool will pick up the new cookie on next run.
-
+- The tool runs as **your Windows user**; Chrome cookie decryption only works for your account.
+- The `_RoliVerification` cookie is a sensitive session token. **Never share, commit, or expose it.**
+- The tool never uploads or transmits your cookie anywhere except directly to the Rolimons API endpoint you control.
+- If your session expires or you log out, simply log in again in Chrome and rerun the tool.
+- For best security, use the CLI prompt (not a plaintext file) and avoid storing the cookie in scripts or logs.
+- This tool is not affiliated with Rolimons or Roblox. Use at your own risk and always comply with their Terms of Service.
 
 ---
 
@@ -139,4 +135,3 @@ cargo run --release -- --player-id 1426170901 --offer-item-ids 10467173753 --req
 	- No need to manually enter roli_verification
 - [ ] **Search for items using NLP instead of item ids**
 - [ ] **Better error messages and diagnostics**
-- [ ] **Cross-platform support** (Linux/Mac)

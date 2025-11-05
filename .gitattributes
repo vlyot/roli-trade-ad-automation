@@ -1,0 +1,5 @@
+# Tell GitHub linguist to ignore build output and Makefiles for language stats
+/target/ linguist-vendored
+Makefile linguist-generated
+*.mk linguist-generated
+*.make linguist-generated
