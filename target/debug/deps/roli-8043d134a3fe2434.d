@@ -1,0 +1,12 @@
+C:\Users\Admin\.vscode\roli-trade-ad-automation\target\debug\deps\libroli-8043d134a3fe2434.rmeta: C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\lib.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\deals.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\games.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\groups.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\items.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\market_activity.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\players.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\trade_ads.rs
+
+C:\Users\Admin\.vscode\roli-trade-ad-automation\target\debug\deps\roli-8043d134a3fe2434.d: C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\lib.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\deals.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\games.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\groups.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\items.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\market_activity.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\players.rs C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\trade_ads.rs
+
+C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\lib.rs:
+C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\deals.rs:
+C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\games.rs:
+C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\groups.rs:
+C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\items.rs:
+C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\market_activity.rs:
+C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\players.rs:
+C:\Users\Admin\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\roli-0.7.2\src\trade_ads.rs:

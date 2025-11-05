@@ -1,0 +1,1 @@
+C:\Users\Admin\.vscode\roli-trade-ad-automation\target\release\roli-trade-ad-automation.exe: C:\Users\Admin\.vscode\roli-trade-ad-automation\src\cookie.rs C:\Users\Admin\.vscode\roli-trade-ad-automation\src\main.rs C:\Users\Admin\.vscode\roli-trade-ad-automation\src\trade_ad.rs
