@@ -13,9 +13,9 @@ use roli::ClientBuilder;
 /// CLI flags
 #[derive(clap::Parser, Debug)]
 struct Args {
-    /// Use direct API post (bypass roli crate, for troubleshooting)
+    /// Use legacy roli crate mode (for troubleshooting)
     #[arg(long, default_value_t = false)]
-    direct: bool,
+    legacy: bool,
     /// Your Roblox / Rolimons player id (omit with --print-only)
     #[arg(long)]
     player_id: Option<u64>,
@@ -129,8 +129,8 @@ async fn main() -> Result<()> {
         anyhow::bail!("Provide at least one of --request-item-ids or --request-tags");
     }
 
-    if args.direct {
-        println!("[DEBUG] Using direct API post (bypassing roli crate)");
+    if !args.legacy {
+        println!("[DEBUG] Using direct API post (default mode)");
         let request_tags = args.request_tags.clone();
         if args.loop_mode {
             println!("[DEBUG] Entering loop mode (direct)");
@@ -175,7 +175,7 @@ async fn main() -> Result<()> {
             }
         }
     } else {
-        println!("[DEBUG] Building roli client");
+        println!("[DEBUG] Building roli client (legacy mode)");
         let client = ClientBuilder::new().set_roli_verification(token).build();
 
         println!("[DEBUG] Mapping request tags");
@@ -187,10 +187,10 @@ async fn main() -> Result<()> {
         println!("[DEBUG] request_tags mapped: {:?}", request_tags);
 
         if args.loop_mode {
-            println!("[DEBUG] Entering loop mode");
+            println!("[DEBUG] Entering loop mode (legacy)");
             let mut next = tokio::time::Instant::now();
             loop {
-                println!("[DEBUG] Posting trade ad in loop");
+                println!("[DEBUG] Posting trade ad in loop (legacy)");
                 post_once(
                     &client,
                     player_id,
@@ -210,7 +210,7 @@ async fn main() -> Result<()> {
                     .await;
             }
         } else {
-            println!("[DEBUG] Posting trade ad once");
+            println!("[DEBUG] Posting trade ad once (legacy)");
             post_once(
                 &client,
                 player_id,
