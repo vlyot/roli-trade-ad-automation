@@ -91,5 +91,5 @@ any, demand, rares, robux, upgrade, downgrade, rap, wishlist, projecteds, adds
 ## Examples
 **One‑shot** (single item, request any):
 ```bash
-cargo run --release -- --player-id 1426170901 --offer-item-ids 31252891 --request-tags any
+cargo run --release -- --player-id 1426170901 --offer-item-ids 10467173753 --request-tags any
 ```

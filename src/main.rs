@@ -35,6 +35,10 @@ struct Args {
     #[arg(long, num_args = 0.., value_delimiter = ',')]
     request_tags: Vec<String>,
 
+    /// Provide roli_verification cookie directly (bypasses Chrome extraction)
+    #[arg(long)]
+    roli_verification: Option<String>,
+
     /// Chrome user-data dir OR a profile dir
     #[arg(long)]
     chrome_user_data: Option<std::path::PathBuf>,
@@ -70,26 +74,37 @@ async fn main() -> Result<()> {
         Ok(path) => {
             println!("[DEBUG] cookies_db: {}", path.display());
             path
-        },
+        }
         Err(e) => {
             eprintln!("[ERROR] Failed to resolve cookies DB: {e}");
             return Err(e);
         }
     };
 
-    println!("[DEBUG] Extracting roli_verification cookie");
-    let token = match extract_roli_verification_from_chrome(&user_data_dir, &cookies_db) {
-        Ok(Some(cookie)) => {
-            println!("[DEBUG] roli_verification: {}", mask_token(&cookie));
-            cookie
-        },
-        Ok(None) => {
-            eprintln!("[ERROR] roli_verification cookie not found");
-            return Err(anyhow::anyhow!("roli_verification cookie not found"));
-        },
-        Err(e) => {
-            eprintln!("[ERROR] Failed to extract roli_verification: {e}");
-            return Err(e);
+    let token = if let Some(cookie) = &args.roli_verification {
+        println!("[DEBUG] Using roli_verification from CLI");
+        cookie.clone()
+    } else {
+        println!("[DEBUG] Extracting roli_verification cookie");
+        match extract_roli_verification_from_chrome(&user_data_dir, &cookies_db) {
+            Ok(Some(cookie)) => {
+                println!("[DEBUG] roli_verification: {}", mask_token(&cookie));
+                cookie
+            }
+            _ => {
+                // Prompt user for input interactively
+                use std::io::Write;
+                print!("Enter your _RoliVerification cookie value: ");
+                std::io::stdout().flush().ok();
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).ok();
+                let input = input.trim().to_string();
+                if input.is_empty() {
+                    eprintln!("[ERROR] No cookie value provided");
+                    return Err(anyhow::anyhow!("No roli_verification cookie provided"));
+                }
+                input
+            }
         }
     };
 
@@ -103,7 +118,9 @@ async fn main() -> Result<()> {
         Some(id) => id,
         None => {
             eprintln!("[ERROR] --player-id is required unless --print-only is used");
-            return Err(anyhow::anyhow!("--player-id is required unless --print-only is used"));
+            return Err(anyhow::anyhow!(
+                "--player-id is required unless --print-only is used"
+            ));
         }
     };
     if args.offer_item_ids.is_empty() {
@@ -148,7 +165,10 @@ async fn main() -> Result<()> {
             let jitter: i64 = rand::thread_rng().gen_range(-120..=120);
             let base = 20 * 60;
             next += std::time::Duration::from_secs((base as i64 + jitter).max(60) as u64);
-            println!("[DEBUG] Sleeping for {} seconds", (base as i64 + jitter).max(60));
+            println!(
+                "[DEBUG] Sleeping for {} seconds",
+                (base as i64 + jitter).max(60)
+            );
             tokio::time::sleep(next.saturating_duration_since(tokio::time::Instant::now())).await;
         }
     } else {
@@ -177,7 +197,8 @@ async fn post_once(
     // [DEBUG] Token already logged in main before building client
     match client.create_trade_ad(params).await {
         Ok(_) => println!(
-            "[DEBUG] Trade ad posted! Visible at https://www.rolimons.com/playertrades/{}", player_id
+            "[DEBUG] Trade ad posted! Visible at https://www.rolimons.com/playertrades/{}",
+            player_id
         ),
         Err(e) => eprintln!("[ERROR] CreateTradeAd failed: {e}"),
     }
@@ -273,9 +294,34 @@ fn extract_roli_verification_from_chrome(
     let local_state = user_data_dir.join("Local State");
     let aes_key = get_aes_key_from_local_state(&local_state)?;
 
-    // copy DB to temp to avoid locks
+    // copy DB to temp to avoid locks, retry on os error 32 (file in use)
     let tmp = std::env::temp_dir().join("Cookies_tmp.sqlite");
-    fs::copy(cookies_db, &tmp)?;
+    const MAX_RETRIES: u32 = 10;
+    const RETRY_DELAY_MS: u64 = 300;
+    let mut last_err = None;
+    for _ in 0..MAX_RETRIES {
+        match fs::copy(cookies_db, &tmp) {
+            Ok(_) => {
+                last_err = None;
+                break;
+            }
+            Err(e) => {
+                // os error 32: file is being used by another process
+                if let Some(32) = e.raw_os_error() {
+                    last_err = Some(e);
+                    std::thread::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS));
+                    continue;
+                } else {
+                    return Err(e.into());
+                }
+            }
+        }
+    }
+    if let Some(e) = last_err {
+        return Err(anyhow::anyhow!(
+            "Failed to copy cookies DB after retries: {e}"
+        ));
+    }
     let conn = Connection::open(&tmp)?;
 
     let mut stmt = conn.prepare(
@@ -334,17 +380,17 @@ fn decrypt_chrome_cookie(encrypted_value: &[u8], aes_key: &[u8]) -> Result<Strin
     }
 }
 
-use windows::Win32::Security::Cryptography::CryptUnprotectData;
 use windows::core::PWSTR;
+use windows::Win32::Security::Cryptography::CryptUnprotectData;
 
 fn decrypt_dpapi(encrypted: &[u8]) -> anyhow::Result<Vec<u8>> {
     unsafe {
         // in/out blobs
-    let mut in_blob = CRYPT_INTEGER_BLOB {
+        let mut in_blob = CRYPT_INTEGER_BLOB {
             cbData: encrypted.len() as u32,
             pbData: encrypted.as_ptr() as *mut u8,
         };
-    let mut out_blob = CRYPT_INTEGER_BLOB {
+        let mut out_blob = CRYPT_INTEGER_BLOB {
             cbData: 0,
             pbData: std::ptr::null_mut(),
         };
@@ -354,13 +400,13 @@ fn decrypt_dpapi(encrypted: &[u8]) -> anyhow::Result<Vec<u8>> {
         let mut _descr: PWSTR = PWSTR::null();
 
         let res = CryptUnprotectData(
-            &mut in_blob,        // pDataIn
-            None,                // ppszDataDescr (Some(&mut _descr) also works)
-            None,                // pOptionalEntropy
-            None,                // pvReserved (THIS must be Option<*const c_void> -> use None)
-            None,                // pPromptStruct
-            0,                   // dwFlags
-            &mut out_blob,       // pDataOut
+            &mut in_blob,  // pDataIn
+            None,          // ppszDataDescr (Some(&mut _descr) also works)
+            None,          // pOptionalEntropy
+            None,          // pvReserved (THIS must be Option<*const c_void> -> use None)
+            None,          // pPromptStruct
+            0,             // dwFlags
+            &mut out_blob, // pDataOut
         );
 
         if res.as_bool() {

@@ -1,14 +1,17 @@
-
-# README.md
-
-
-## roli-trade-ad-automation (Windows 11 + Chrome)
 A small Rust CLI that **extracts your `roli_verification` cookie from Chrome** (Windows user profile) and **posts a trade ad on Rolimons** using the `roli` crate. It can run **once** or in a **loop** (about every 20 minutes with jitter).
+
+before making changes, read through the codebase to understand how it works.
 
 The main objective is to automate posting of a trade ad every 20 minutes.
 Refer to the documentation ClientBuilder in roli - Rust.html file for documentation on how to use the roli crate.
 
+1. Extract `roli_verification` cookie from Chrome (Windows user profile)
+   1.1 It should bypass os error 32 (file is being used by another process)
+2. Post a trade ad on Rolimons using the `roli` crate
+3. Automate the process to run every 20 minutes
+
 example of posting a trade ad:
+
 ```rust
 use clap::Parser;
 use roli::{trade_ads, ClientBuilder};
@@ -83,17 +86,3 @@ async fn main() {
     }
 }
 ```
-
-
-> ⚠️ **Only use with your own account.** Cookies are secrets. Keep them safe and respect the site’s Terms of Service.
-
-
----
-
-
-## Features
-- 🔑 Automatically locates Chrome’s **Local State** + **Cookies** DB for the *Default* profile (or a path you provide).
-- 🔓 Decrypts Chrome’s cookie encryption (AES‑GCM key unwrapped via **Windows DPAPI**) and retrieves `roli_verification`.
-- 📢 Posts a trade ad via `roli::Client::create_trade_ad`.
-- ⏱️ Two modes:
-- **One‑shot**: post once and exit.
