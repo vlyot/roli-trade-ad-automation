@@ -1,0 +1,8 @@
+# Ignore Rust build output and other common files
+/target/
+**/*.rs.bk
+Cargo.lock
+*.log
+.DS_Store
+*.swp
+*.tmp
