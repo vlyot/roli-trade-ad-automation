@@ -122,7 +122,7 @@ cargo run --release -- --player-id -insert player id- --offer-item-ids -insert i
 
 - [x] **Manual trade ad posting** (current)
 - [x] **Direct API mode** (browser-mimic, robust against site changes)
-- [ ] **GUI interface**
+- [ ] **GUI interface** (Looking at tauri-react app)
 - [ ] **Automatic trade ad posting every n minutes** (n is variable and determined by user, minimum 15)
 - [ ] **Login as specific user** (planned):
 	- Authenticate as a user, fetch inventory directly from Rolimons/Roblox
@@ -131,3 +131,5 @@ cargo run --release -- --player-id -insert player id- --offer-item-ids -insert i
 	- No need to manually enter roli_verification
 	- Uses 'https://create.roblox.com/docs/cloud/legacy/users/v1#/AccountInformation/get_v1_description' for login and verification
 - [ ] **Search for items using NLP instead of item ids**
+- [ ] Running app (posting trade ads) as a background process
+- [ ] Opening the app to toggle trade ads on system startup
