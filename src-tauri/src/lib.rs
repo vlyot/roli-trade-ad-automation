@@ -17,50 +17,38 @@ pub struct TradeAdRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TradeAdResponse {
     success: bool,
-    message: String,
+    logs: Vec<String>,
 }
 
 /// Tauri command to post a trade ad to Rolimons
 #[tauri::command]
 async fn post_trade_ad(request: TradeAdRequest) -> Result<TradeAdResponse, String> {
     // Validate inputs
+    let mut logs = Vec::new();
+    logs.push("Connecting to Rolimons API...".to_string());
+
     if request.offer_item_ids.is_empty() {
-        return Ok(TradeAdResponse {
-            success: false,
-            message: "You must offer at least one item".to_string(),
-        });
+        logs.push("You must offer at least one item".to_string());
+        return Ok(TradeAdResponse { success: false, logs });
     }
-
     if request.offer_item_ids.len() > 4 {
-        return Ok(TradeAdResponse {
-            success: false,
-            message: "You can only offer up to 4 items".to_string(),
-        });
+        logs.push("You can only offer up to 4 items".to_string());
+        return Ok(TradeAdResponse { success: false, logs });
     }
-
     let total_requests = request.request_item_ids.len() + request.request_tags.len();
     if total_requests == 0 {
-        return Ok(TradeAdResponse {
-            success: false,
-            message: "You must request at least one item or tag".to_string(),
-        });
+        logs.push("You must request at least one item or tag".to_string());
+        return Ok(TradeAdResponse { success: false, logs });
     }
-
     if total_requests > 4 {
-        return Ok(TradeAdResponse {
-            success: false,
-            message: "You can only request up to 4 items (combined item IDs and tags)".to_string(),
-        });
+        logs.push("You can only request up to 4 items (combined item IDs and tags)".to_string());
+        return Ok(TradeAdResponse { success: false, logs });
     }
-
     if request.roli_verification.trim().is_empty() {
-        return Ok(TradeAdResponse {
-            success: false,
-            message: "Roli verification cookie is required".to_string(),
-        });
+        logs.push("Roli verification cookie is required".to_string());
+        return Ok(TradeAdResponse { success: false, logs });
     }
-
-    // Post the trade ad
+    logs.push("Posting trade ad...".to_string());
     match trade_ad::post_trade_ad_direct(
         &request.roli_verification,
         request.player_id,
@@ -70,14 +58,14 @@ async fn post_trade_ad(request: TradeAdRequest) -> Result<TradeAdResponse, Strin
     )
     .await
     {
-        Ok(message) => Ok(TradeAdResponse {
-            success: true,
-            message,
-        }),
-        Err(e) => Ok(TradeAdResponse {
-            success: false,
-            message: format!("Failed to post trade ad: {}", e),
-        }),
+        Ok(message) => {
+            logs.push(message);
+            Ok(TradeAdResponse { success: true, logs })
+        },
+        Err(e) => {
+            logs.push(format!("Failed to post trade ad: {}", e));
+            Ok(TradeAdResponse { success: false, logs })
+        },
     }
 }
 
