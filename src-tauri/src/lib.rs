@@ -29,24 +29,39 @@ async fn post_trade_ad(request: TradeAdRequest) -> Result<TradeAdResponse, Strin
 
     if request.offer_item_ids.is_empty() {
         logs.push("You must offer at least one item".to_string());
-        return Ok(TradeAdResponse { success: false, logs });
+        return Ok(TradeAdResponse {
+            success: false,
+            logs,
+        });
     }
     if request.offer_item_ids.len() > 4 {
         logs.push("You can only offer up to 4 items".to_string());
-        return Ok(TradeAdResponse { success: false, logs });
+        return Ok(TradeAdResponse {
+            success: false,
+            logs,
+        });
     }
     let total_requests = request.request_item_ids.len() + request.request_tags.len();
     if total_requests == 0 {
         logs.push("You must request at least one item or tag".to_string());
-        return Ok(TradeAdResponse { success: false, logs });
+        return Ok(TradeAdResponse {
+            success: false,
+            logs,
+        });
     }
     if total_requests > 4 {
         logs.push("You can only request up to 4 items (combined item IDs and tags)".to_string());
-        return Ok(TradeAdResponse { success: false, logs });
+        return Ok(TradeAdResponse {
+            success: false,
+            logs,
+        });
     }
     if request.roli_verification.trim().is_empty() {
         logs.push("Roli verification cookie is required".to_string());
-        return Ok(TradeAdResponse { success: false, logs });
+        return Ok(TradeAdResponse {
+            success: false,
+            logs,
+        });
     }
     logs.push("Posting trade ad...".to_string());
     match trade_ad::post_trade_ad_direct(
@@ -60,12 +75,18 @@ async fn post_trade_ad(request: TradeAdRequest) -> Result<TradeAdResponse, Strin
     {
         Ok(message) => {
             logs.push(message);
-            Ok(TradeAdResponse { success: true, logs })
-        },
+            Ok(TradeAdResponse {
+                success: true,
+                logs,
+            })
+        }
         Err(e) => {
             logs.push(format!("Failed to post trade ad: {}", e));
-            Ok(TradeAdResponse { success: false, logs })
-        },
+            Ok(TradeAdResponse {
+                success: false,
+                logs,
+            })
+        }
     }
 }
 
@@ -110,9 +131,24 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             post_trade_ad,
+            // fetch catalog pages from Rolimons
+            get_catalog_items,
             validate_request_tag,
             get_available_tags
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Tauri command to fetch catalog items from Rolimons with pagination and optional search.
+#[tauri::command]
+async fn get_catalog_items(
+    page: usize,
+    per_page: usize,
+    search: Option<String>,
+) -> Result<serde_json::Value, String> {
+    match trade_ad::fetch_item_details(page, per_page, search).await {
+        Ok((items, total)) => Ok(serde_json::json!({"items": items, "total": total})),
+        Err(e) => Err(e.to_string()),
+    }
 }

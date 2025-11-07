@@ -5,7 +5,146 @@ use anyhow::{anyhow, Result};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, COOKIE, USER_AGENT};
 use reqwest::header::{ACCEPT, ACCEPT_ENCODING, ACCEPT_LANGUAGE, ORIGIN, REFERER};
 use roli::trade_ads;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashMap;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ItemInfo {
+    pub id: u64,
+    pub name: String,
+    pub abbreviation: Option<String>,
+    pub rap: u64,
+    pub value: u64,
+}
+
+/// Fetches Rolimons item details from their public item API, maps indices to fields,
+/// sorts by RAP descending and returns a page of items plus total count.
+pub async fn fetch_item_details(
+    page: usize,
+    per_page: usize,
+    search: Option<String>,
+) -> Result<(Vec<ItemInfo>, usize)> {
+    // The public Rolimons item details endpoint
+    let url = "https://www.rolimons.com/itemapi/itemdetails";
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(url)
+        .header(USER_AGENT, HeaderValue::from_static("rolimons-fetcher/1.0"))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        return Err(anyhow!("Failed to fetch item details: {}", resp.status()));
+    }
+
+    let body = resp.text().await.unwrap_or_default();
+    // The response has top-level keys: success, item_count, items
+    println!("[fetch_item_details] fetched body length: {}", body.len());
+    let root: serde_json::Value = serde_json::from_str(&body)?;
+    if let serde_json::Value::Object(root_map) = &root {
+        println!(
+            "[fetch_item_details] root keys: {:?}",
+            root_map.keys().collect::<Vec<_>>()
+        );
+    }
+    // Extract items object
+    let items_value = match root.get("items") {
+        Some(v) => v,
+        None => {
+            println!("[fetch_item_details] no 'items' key in response");
+            return Ok((Vec::new(), 0));
+        }
+    };
+    let items_map = match items_value {
+        serde_json::Value::Object(m) => m,
+        other => {
+            println!("[fetch_item_details] 'items' is not an object: {}", other);
+            return Ok((Vec::new(), 0));
+        }
+    };
+    println!(
+        "[fetch_item_details] parsed items entries: {}",
+        items_map.len()
+    );
+
+    let mut items: Vec<ItemInfo> = Vec::with_capacity(items_map.len());
+
+    for (key, val) in items_map.iter() {
+        // key is the item id as string
+        let id: u64 = match key.parse() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        // Expecting an array like: [name, abbreviation, rap, value, ...]
+        if let serde_json::Value::Array(arr) = val {
+            let name = arr
+                .get(0)
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let abbr = arr
+                .get(1)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty());
+            // rap at index 2
+            let rap = arr.get(2).and_then(|v| v.as_i64()).unwrap_or(0) as i64;
+            // value at index 3 (may be -1)
+            let value_raw = arr.get(3).and_then(|v| v.as_i64()).unwrap_or(-1) as i64;
+            let rap_u = if rap < 0 { 0 } else { rap as u64 };
+            let value_u = if value_raw < 0 {
+                rap_u
+            } else {
+                value_raw as u64
+            };
+
+            let item = ItemInfo {
+                id,
+                name,
+                abbreviation: abbr,
+                rap: rap_u,
+                value: value_u,
+            };
+            items.push(item);
+        }
+    }
+
+    // Optional filtering by search (match name or abbreviation)
+    let filtered: Vec<ItemInfo> = if let Some(q) = search {
+        let ql = q.to_lowercase();
+        items
+            .into_iter()
+            .filter(|it| {
+                it.name.to_lowercase().contains(&ql)
+                    || it
+                        .abbreviation
+                        .as_ref()
+                        .map(|a| a.to_lowercase().contains(&ql))
+                        .unwrap_or(false)
+            })
+            .collect()
+    } else {
+        items
+    };
+
+    // Sort by RAP desc
+    let mut sorted = filtered;
+    sorted.sort_by(|a, b| b.rap.cmp(&a.rap));
+
+    let total = sorted.len();
+    let start = page.saturating_sub(1) * per_page;
+    let end = std::cmp::min(start + per_page, total);
+    let page_items = if start >= total {
+        Vec::new()
+    } else {
+        sorted[start..end].to_vec()
+    };
+
+    Ok((page_items, total))
+}
 
 pub fn map_request_tag(s: &str) -> trade_ads::RequestTag {
     match s {

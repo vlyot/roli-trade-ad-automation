@@ -12,6 +12,10 @@
     "dev:backend": "cargo build --manifest-path=src-tauri/Cargo.toml"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.3.5",
+    "@mui/material": "^7.3.5",
     "@tauri-apps/api": "2.9.0",
     "@tauri-apps/plugin-opener": "2.5.2",
     "all": "^0.0.0",
