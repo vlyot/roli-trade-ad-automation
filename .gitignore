@@ -1,3 +1,16 @@
+# Ignore Rust/Cargo build artifacts
+/target/
+
+# Ignore Tauri build output (if present)
+src-tauri/target/
+
+# Node/Vite build artifacts (if present)
+node_modules/
+dist/
+
+# Optional: OS files
+.DS_Store
+Thumbs.db
 # Logs
 logs
 *.log
