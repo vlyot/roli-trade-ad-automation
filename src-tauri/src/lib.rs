@@ -1,6 +1,5 @@
 // lib.rs: Tauri commands for Rolimons trade ad automation GUI application.
 
-mod cookie;
 mod trade_ad;
 
 use serde::{Deserialize, Serialize};

@@ -16,14 +16,10 @@ This project is an independent tool and is not affiliated with Roblox or the ori
 
 ## Features
 - User copies their Roli_Verification cookie from Rolimons (manual step)
-- 📢 Posts a trade ad via a direct API call (browser-mimic mode, default) or the legacy `roli` crate (with `--legacy`).
+- 📢 Posts a trade ad via a direct API call (browser-mimic mode, default) 
 - ⏱️ Two modes:
 	- **One‑shot**: post once and exit.
-	- **Loop mode**: keep running, post roughly every **20 minutes** (±2‑min jitter) to look less “botty”.
-- 🧑‍💻 **Direct mode**: Default. Posts exactly like a browser for maximum compatibility.
-- 🏛️ **Legacy mode**: Use `--legacy` to use the old `roli` crate (for troubleshooting only).
-- 🖥️ CLI prompts for cookie if not found, or accepts it via `--roli-verification` for scripting.
-
+	- **Loop mode**: keep running, post every **20 minutes** (variable).
 ---
 
 
