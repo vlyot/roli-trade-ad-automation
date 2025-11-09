@@ -116,9 +116,9 @@ cargo run --release -- --player-id -insert player id- --offer-item-ids -insert i
 
 ## Timeline / Roadmap
 
-- [x] **Manual trade ad posting** (current)
-- [x] **Direct API mode** (browser-mimic, robust against site changes)
-- [ ] **GUI interface** (Looking at tauri-react app)
+- [x] **Manual trade ad posting** (CLI) (Depreciated)
+- [x] **Direct API mode** 
+- [x] **GUI interface** (Tauri + React )
 - [ ] **Automatic trade ad posting every n minutes** (n is variable and determined by user, minimum 15)
 - [ ] **Login as specific user** (planned):
 	- Authenticate as a user, fetch inventory directly from Rolimons/Roblox

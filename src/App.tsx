@@ -1,6 +1,9 @@
 ﻿import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Box, Button, Card, CardContent, Typography, Chip, ThemeProvider, createTheme, CssBaseline } from "@mui/material";
+import { Box, Button, Card, CardContent, Typography, Chip, ThemeProvider, createTheme, CssBaseline, IconButton } from "@mui/material";
+import { Logout as LogoutIcon } from "@mui/icons-material";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import LoginFlow from "./components/LoginFlow";
 import OfferSlots from "./components/OfferSlots";
 import RequestSlots from "./components/RequestSlots";
 import SelectorButtons from "./components/SelectorButtons";
@@ -31,7 +34,8 @@ const INVENTORY_ITEMS = [
 
 const darkTheme = createTheme({ palette: { mode: "dark", primary: { main: "#3b82f6" }, background: { default: "#3a4049", paper: "#3a4049" } } });
 
-export default function App() {
+function MainApp() {
+  const { authData, logout: authLogout, updateRoliVerification } = useAuth();
   const [playerId, setPlayerId] = useState("");
   const [roliVerification, setRoliVerification] = useState("");
   const [offerItems, setOfferItems] = useState<number[]>([]);
@@ -42,6 +46,16 @@ export default function App() {
   const [catalogTotal, setCatalogTotal] = useState(0);
   const [catalogPage, setCatalogPage] = useState(1);
   const PER_PAGE = 30;
+
+  // Auto-load user_id and roli_verification from auth data
+  useEffect(() => {
+    if (authData) {
+      setPlayerId(authData.user_id.toString());
+      if (authData.roli_verification) {
+        setRoliVerification(authData.roli_verification);
+      }
+    }
+  }, [authData]);
   // full-catalog cache per search term to enable instant client-side pagination
   // key: searchValue ('' for no search) -> { items: rawItems[], total }
   const catalogFullCache = (globalThis as any)._catalogFullCacheRef || { current: new Map<string, { items: any[]; total: number }>() };
@@ -177,11 +191,28 @@ export default function App() {
         return;
       }
       const response = await invoke<any>("post_trade_ad", { request });
+      
+      // Save roli_verification on successful post (or if error is NOT about invalid token)
+      if (response && response.success && authData && roliVerification.trim() !== authData.roli_verification) {
+        try {
+          await updateRoliVerification(roliVerification.trim());
+          appendLog("Roli verification saved for future use");
+        } catch (e) {
+          appendLog(`Warning: Could not save roli_verification: ${e}`);
+        }
+      }
+      
       if (response && Array.isArray(response.logs)) setTerminalLogs(response.logs);
       else if (response && response.logs) setTerminalLogs(Array.isArray(response.logs) ? response.logs : [String(response.logs)]);
       else appendLog("Success!");
     } catch (err: any) {
-      setTerminalLogs([err?.message ?? String(err)]);
+      const errMsg = err?.message ?? String(err);
+      setTerminalLogs([errMsg]);
+      // If error message suggests invalid roli_verification, prompt user to re-enter
+      if (errMsg.toLowerCase().includes("roli") && errMsg.toLowerCase().includes("verification")) {
+        setRoliVerification("");
+        appendLog("Please enter a valid Roli Verification cookie");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -193,6 +224,18 @@ export default function App() {
       <Box sx={{ minHeight: "100vh", bgcolor: "#3a4049", p: 2 }}>
         <Card sx={{ maxWidth: 1000, mx: "auto", bgcolor: "#3a4049", boxShadow: "none" }}>
           <CardContent sx={{ p: 2 }}>
+
+            {/* Welcome message and logout */}
+            {authData && (
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, p: 1.5, bgcolor: "#4a525c", borderRadius: 1 }}>
+                <Typography variant="subtitle1" sx={{ color: "white", fontWeight: 500 }}>
+                  Welcome, {authData.display_name}
+                </Typography>
+                <IconButton onClick={authLogout} size="small" sx={{ color: "white" }} title="Logout">
+                  <LogoutIcon />
+                </IconButton>
+              </Box>
+            )}
 
             <Box sx={{ mb: 1 }}>
               <Typography variant="h6" sx={{ textAlign: "center", mb: 1, color: "white", fontSize: "1.1rem" }}>Offer</Typography>
@@ -256,4 +299,38 @@ export default function App() {
     </ThemeProvider>
   );
 }
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
+
+function AppContent() {
+  const { authData, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <ThemeProvider theme={darkTheme}>
+        <CssBaseline />
+        <Box sx={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", bgcolor: "#3a4049" }}>
+          <Typography variant="h6" sx={{ color: "white" }}>Loading...</Typography>
+        </Box>
+      </ThemeProvider>
+    );
+  }
+
+  if (!authData) {
+    return (
+      <ThemeProvider theme={darkTheme}>
+        <CssBaseline />
+        <LoginFlow onLoginComplete={() => {}} />
+      </ThemeProvider>
+    );
+  }
+
+  return <MainApp />;
+}
+
 
