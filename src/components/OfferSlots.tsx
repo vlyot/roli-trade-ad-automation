@@ -5,9 +5,10 @@ import CloseIcon from "@mui/icons-material/Close";
 export interface OfferSlotsProps {
   offerItems: number[];
   onRemove: (index: number) => void;
+  inventoryItems?: any[];
 }
 
-export default function OfferSlots({ offerItems, onRemove }: OfferSlotsProps) {
+export default function OfferSlots({ offerItems, onRemove, inventoryItems }: OfferSlotsProps) {
   return (
     <Box sx={{ display: "flex", gap: 1, mb: 1, justifyContent: "center" }}>
       {Array.from({ length: 4 }).map((_, idx) => (
@@ -17,7 +18,17 @@ export default function OfferSlots({ offerItems, onRemove }: OfferSlotsProps) {
               <CloseIcon sx={{ fontSize: 12 }} />
             </IconButton>
           )}
-          {offerItems[idx] && <Box sx={{ width: 70, height: 70, bgcolor: "#5a626c", borderRadius: 1 }} />}
+          {offerItems[idx] ? (
+            (() => {
+              const id = offerItems[idx];
+              const inv = inventoryItems?.find((i: any) => i.id === id);
+              const thumb = inv?.thumbnail ?? null;
+              if (thumb) {
+                return <Box component="img" src={thumb} alt={inv?.name ?? "item"} sx={{ width: 70, height: 70, objectFit: "contain", bgcolor: "#222", borderRadius: 0.5 }} />;
+              }
+              return <Box sx={{ width: 70, height: 70, bgcolor: "#5a626c", borderRadius: 1 }} />;
+            })()
+          ) : null}
         </Box>
       ))}
     </Box>

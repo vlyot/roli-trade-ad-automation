@@ -9,6 +9,7 @@ pub mod request_search_roli {
     include!("request_search_roli.rs");
 }
 pub use request_search_roli::fetch_item_details;
+pub use request_search_roli::fetch_items_by_ids;
 
 // Include post-trade-ad.rs into a valid Rust module name `post_trade_ad`.
 pub mod post_trade_ad {

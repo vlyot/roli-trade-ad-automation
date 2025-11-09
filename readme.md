@@ -14,22 +14,9 @@ This project is an independent tool and is not affiliated with Roblox or the ori
 
 
 
-## Features
-- User copies their Roli_Verification cookie from Rolimons (manual step)
-- 📢 Posts a trade ad via a direct API call (browser-mimic mode, default) 
-- ⏱️ Two modes:
-	- **One‑shot**: post once and exit.
-	- **Loop mode**: keep running, post every **20 minutes** (variable).
----
-
-
-
-## How it works (high level)
-1. **User copies `_RoliVerification` cookie**: You must manually copy your cookie from your browser's dev tools (see Rolimons site, Application tab, Cookies section).
-2. **Provide cookie to the tool**: Paste it when prompted, or pass it via `--roli-verification` for scripting/automation.
-3. **Post trade ad**:
-   - **Default (Direct API)**: Mimics a real browser request to the Rolimons API endpoint, including all necessary headers and cookies for maximum reliability and future-proofing.
-   - **Legacy mode**: Uses the `roli` crate (may break if the API changes or if stricter anti-bot measures are introduced).
+## How it works 
+1. user verifies roblox account through about
+2. user posts trade ad
 
 
 ---
@@ -60,59 +47,7 @@ This project is an independent tool and is not affiliated with Roblox or the ori
 cargo build --release
 ```
 
-
----
-
-
-
-## CLI usage
-```
-USAGE:
-roli-trade-ad-automation --player-id <ID> --offer-item-ids <ID> ... [--request-item-ids <ID> ...] [--request-tags <TAG> ...] [--chrome-user-data <PATH>] [--loop-mode] [--legacy] [--roli-verification <COOKIE>]
-
-FLAGS & ARGS:
---player-id <u64>            Your Roblox player ID (Rolimons profile ID)
---offer-item-ids <u64>...    One or more item IDs you are offering (repeat flag)
---request-item-ids <u64>...  Optional: item IDs you request (repeat flag)
---request-tags <TAG>...      Optional: tags to request. One or more of:
-							any, demand, rares, robux, upgrade, downgrade, rap, wishlist, projecteds, adds
---chrome-user-data <PATH>    Optional: Chrome user data dir (defaults to `%LOCALAPPDATA%/Google/Chrome/User Data`)
---loop-mode                  Optional: run continuously and post every ~20 minutes (+/- 2 minutes)
---legacy                     Optional: use legacy roli crate mode (not recommended)
---roli-verification <COOKIE> Optional: provide the cookie directly (bypasses Chrome extraction)
-```
-
-
-> At least **one** `--offer-item-ids` is required, and **at least one** of `--request-item-ids` or `--request-tags` must be provided.
-
-
----
-
-
-
-## Examples
-**One‑shot** (single item, request any):
-```bash
-cargo run --release -- --player-id -insert player id- --offer-item-ids -insert item id- --request-tags any
-```
-
-
-**Legacy mode (use old roli crate, not recommended):**
-```bash
-cargo run --release -- --player-id -insert player id- --offer-item-ids -insert item id- --request-tags any --legacy
-```
-
-**Loop mode (post every ~20 min):**
-```bash
-cargo run --release -- --player-id -insert player id- --offer-item-ids -insert item id- --request-tags any --loop-mode
-```
-
-**Provide cookie directly (for scripting):**
-```bash
-cargo run --release -- --player-id -insert player id- --offer-item-ids -insert item id- --request-tags any --roli-verification <cookie>
-```
-
----
+--- 
 
 ## Timeline / Roadmap
 
@@ -120,12 +55,8 @@ cargo run --release -- --player-id -insert player id- --offer-item-ids -insert i
 - [x] **Direct API mode** 
 - [x] **GUI interface** (Tauri + React )
 - [ ] **Automatic trade ad posting every n minutes** (n is variable and determined by user, minimum 15)
-- [ ] **Login as specific user** (planned):
-	- Authenticate as a user, fetch inventory directly from Rolimons/Roblox
-	- Select items from your inventory directly
-	- No need to manually enter item IDs
-	- No need to manually enter roli_verification
-	- Uses 'https://create.roblox.com/docs/cloud/legacy/users/v1#/AccountInformation/get_v1_description' for login and verification
-- [ ] **Search for items using NLP instead of item ids**
+- [x] **Login as specific user** (implemented):
+
+- [x] **Search for items using NLP instead of item ids** 
 - [ ] Running app (posting trade ads) as a background process
 - [ ] Opening the app to toggle trade ads on system startup

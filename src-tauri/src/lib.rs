@@ -2,6 +2,7 @@
 
 mod auth_storage;
 mod avatar_thumbnails;
+mod player_assets;
 mod roblox_user;
 mod rolimons_players;
 mod trade_ad;
@@ -234,6 +235,11 @@ pub fn run() {
             get_user_details,
             // rolimons players search + thumbnails
             rolimons_players::search_players_with_thumbnails,
+            // player assets (inventory)
+            player_assets::fetch_player_assets,
+            player_assets::fetch_player_inventory,
+            // targeted catalog lookup by ids
+            get_catalog_items_by_ids,
             generate_verification_code,
             verify_user,
             // avatar thumbnails for user search
@@ -256,6 +262,15 @@ async fn get_catalog_items(
 ) -> Result<serde_json::Value, String> {
     match trade_ad::fetch_item_details(page, per_page, search).await {
         Ok((items, total)) => Ok(serde_json::json!({"items": items, "total": total})),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Tauri command: fetch catalog entries for specific catalog IDs (targeted lookup)
+#[tauri::command]
+async fn get_catalog_items_by_ids(ids: Vec<u64>) -> Result<serde_json::Value, String> {
+    match trade_ad::fetch_items_by_ids(ids).await {
+        Ok(items) => Ok(serde_json::json!({"items": items})),
         Err(e) => Err(e.to_string()),
     }
 }
