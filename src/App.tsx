@@ -12,6 +12,7 @@ import ItemsGrid from "./components/ItemsGrid";
 import PaginationControls from "./components/PaginationControls";
 import PlayerAndCookieInputs from "./components/PlayerAndCookieInputs";
 import TerminalLogs from "./components/TerminalLogs";
+import AdvertisementManager from "./components/AdvertisementManager";
 // InventoryPicker removed: inventory will load automatically and be enriched from catalog data
 
 interface TradeAdRequest {
@@ -63,6 +64,9 @@ function MainApp() {
   const [searchValue, setSearchValue] = useState("");
 
   const appendLog = (line: string) => setTerminalLogs((prev) => [...prev, line].slice(-200));
+
+  // Advertisement refresh signal for manager
+  const [adsRefreshSignal, setAdsRefreshSignal] = useState<number>(0);
 
   // Ensure Offer and Request item lists are strictly decoupled.
   // Build two independent arrays:
@@ -356,6 +360,51 @@ function MainApp() {
     }
   };
 
+  const computeOfferCatalogIds = (): number[] => {
+    const mapped: number[] = offerItems
+      .map((instId) => {
+        const inv = inventoryItems.find((i) => i.id === instId);
+        return inv ? Number(inv.catalog_id ?? inv.catalogId ?? inv.catalog_id) : instId;
+      })
+      .filter((id) => !!id);
+    return mapped;
+  };
+
+  async function postTradeAdRequest(request: TradeAdRequest) {
+    setIsLoading(true);
+    appendLog("Posting trade ad...");
+    try {
+      if (typeof invoke !== "function") {
+        appendLog("Tauri invoke() unavailable — cannot post");
+        return null;
+      }
+      const response = await invoke<any>("post_trade_ad", { request });
+      // Save roli_verification on successful post (or if error is NOT about invalid token)
+      if (response && response.success && authData && request.roli_verification.trim() !== authData.roli_verification) {
+        try {
+          await updateRoliVerification(request.roli_verification.trim());
+          appendLog("Roli verification saved for future use");
+        } catch (e) {
+          appendLog(`Warning: Could not save roli_verification: ${e}`);
+        }
+      }
+      if (response && Array.isArray(response.logs)) setTerminalLogs(response.logs);
+      else if (response && response.logs) setTerminalLogs(Array.isArray(response.logs) ? response.logs : [String(response.logs)]);
+      else appendLog("Success!");
+      return response;
+    } catch (err: any) {
+      const errMsg = err?.message ?? String(err);
+      setTerminalLogs([errMsg]);
+      if (errMsg.toLowerCase().includes("roli") && errMsg.toLowerCase().includes("verification")) {
+        setRoliVerification("");
+        appendLog("Please enter a valid Roli Verification cookie");
+      }
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   const handleSubmit = async () => {
     setIsLoading(true);
     setTerminalLogs([]);
@@ -367,15 +416,7 @@ function MainApp() {
       if (requestItems.length + selectedTags.length === 0) throw new Error("Please add at least one request item or tag");
       if (!roliVerification.trim()) throw new Error("Please enter your Roli Verification cookie");
 
-      // Map offer instance IDs (inventory instance ids) to their catalog/item ids expected by the backend
-      const offer_item_ids_mapped: number[] = offerItems
-        .map((instId) => {
-          const inv = inventoryItems.find((i) => i.id === instId);
-          // inventory entries include `catalog_id`; fall back to the instance id if not found
-          return inv ? Number(inv.catalog_id ?? inv.catalogId ?? inv.catalog_id) : instId;
-        })
-        .filter((id) => !!id);
-
+      const offer_item_ids_mapped = computeOfferCatalogIds();
       appendLog(`Mapped ${offerItems.length} offer instances -> ${offer_item_ids_mapped.length} catalog ids`);
 
       const request: TradeAdRequest = {
@@ -385,31 +426,10 @@ function MainApp() {
         request_tags: selectedTags.map((t) => t.toLowerCase()),
         roli_verification: roliVerification.trim(),
       };
-      appendLog("Posting trade ad...");
-      if (typeof invoke !== "function") {
-        appendLog("Tauri invoke() unavailable — cannot post");
-        setIsLoading(false);
-        return;
-      }
-      const response = await invoke<any>("post_trade_ad", { request });
-      
-      // Save roli_verification on successful post (or if error is NOT about invalid token)
-      if (response && response.success && authData && roliVerification.trim() !== authData.roli_verification) {
-        try {
-          await updateRoliVerification(roliVerification.trim());
-          appendLog("Roli verification saved for future use");
-        } catch (e) {
-          appendLog(`Warning: Could not save roli_verification: ${e}`);
-        }
-      }
-      
-      if (response && Array.isArray(response.logs)) setTerminalLogs(response.logs);
-      else if (response && response.logs) setTerminalLogs(Array.isArray(response.logs) ? response.logs : [String(response.logs)]);
-      else appendLog("Success!");
+      await postTradeAdRequest(request);
     } catch (err: any) {
       const errMsg = err?.message ?? String(err);
       setTerminalLogs([errMsg]);
-      // If error message suggests invalid roli_verification, prompt user to re-enter
       if (errMsg.toLowerCase().includes("roli") && errMsg.toLowerCase().includes("verification")) {
         setRoliVerification("");
         appendLog("Please enter a valid Roli Verification cookie");
@@ -418,6 +438,10 @@ function MainApp() {
       setIsLoading(false);
     }
   };
+
+  // Note: building/posting from saved ads is handled in the Rust backend runner now.
+
+  // Scheduling and running of ads moved to Rust backend (ads_runner). Manager will call start_ad/stop_ad.
 
   return (
     <ThemeProvider theme={darkTheme}>
@@ -437,6 +461,9 @@ function MainApp() {
                 </IconButton>
               </Box>
             )}
+
+            {/* Advertisement manager: saved ads and controls — placed above Offer/Request */}
+            <AdvertisementManager refreshSignal={adsRefreshSignal} appendLog={appendLog} />
 
             <Box sx={{ mb: 1 }}>
               <Typography variant="h6" sx={{ textAlign: "center", mb: 1, color: "white", fontSize: "1.1rem" }}>Offer</Typography>
@@ -459,8 +486,30 @@ function MainApp() {
                 <Typography variant="body2" sx={{ color: "#60a5fa", fontSize: "0.85rem" }}>Value {requestValue.toLocaleString()}</Typography>
                 <Typography variant="body2" sx={{ color: "#60a5fa", fontSize: "0.85rem" }}>RAP {requestRAP.toLocaleString()}</Typography>
               </Box>
-              <Box sx={{ textAlign: "center", mb: 2 }}>
+              <Box sx={{ textAlign: "center", mb: 2, display: 'flex', justifyContent: 'center', gap: 1 }}>
                 <Button variant="contained" onClick={handleSubmit} disabled={isLoading} sx={{ bgcolor: "#4a525c", color: "white", px: 4, py: 0.75, textTransform: "none", fontSize: "1rem", "&:hover": { bgcolor: "#5a626c" }, "&:disabled": { bgcolor: "#3a424c", color: "#999" } }}>{isLoading ? "Posting..." : "Submit"}</Button>
+                <Button variant="outlined" onClick={async () => {
+                  // Save current selection as an ad (auto-named)
+                  try {
+                    const existing: any = await invoke('list_ads');
+                    const count = Array.isArray(existing) ? existing.length : 0;
+                    const name = `Ad ${count + 1}`;
+                    const ad = {
+                      id: Math.random().toString(36).slice(2, 10),
+                      name,
+                      player_id: Number(playerId || authData?.user_id || 0),
+                      roli_verification: roliVerification || null,
+                      offer_item_ids: computeOfferCatalogIds(),
+                      request_item_ids: requestItems,
+                      request_tags: selectedTags,
+                    };
+                    await invoke('save_ad', { ad });
+                    setAdsRefreshSignal((s) => s + 1);
+                    appendLog(`Saved advertisement '${name}'`);
+                  } catch (e) {
+                    appendLog(`Failed to save advertisement: ${String(e)}`);
+                  }
+                }} sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.12)' }}>Save as ad</Button>
               </Box>
             </Box>
 

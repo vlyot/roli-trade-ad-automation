@@ -1,5 +1,7 @@
 // lib.rs: Tauri commands for Rolimons trade ad automation GUI application.
 
+mod ads_runner;
+mod ads_storage;
 mod auth_storage;
 mod avatar_thumbnails;
 mod player_assets;
@@ -93,6 +95,50 @@ async fn post_trade_ad(request: TradeAdRequest) -> Result<TradeAdResponse, Strin
             })
         }
     }
+}
+
+// ===== Ads storage commands =====
+
+#[tauri::command]
+fn list_ads() -> Result<Vec<ads_storage::AdData>, String> {
+    ads_storage::list_ads().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_ad(ad: ads_storage::AdData) -> Result<(), String> {
+    ads_storage::save_ad(&ad).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_ad(id: String) -> Result<(), String> {
+    ads_storage::delete_ad(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_ad(id: String) -> Result<Option<ads_storage::AdData>, String> {
+    ads_storage::get_ad(&id).map_err(|e| e.to_string())
+}
+
+// ===== Ads runner commands =====
+
+#[tauri::command]
+fn start_ad(id: String, interval_minutes: Option<u64>) -> Result<(), String> {
+    let ad_opt = ads_storage::get_ad(&id).map_err(|e| e.to_string())?;
+    let mut ad = ad_opt.ok_or_else(|| "Ad not found".to_string())?;
+    if let Some(i) = interval_minutes {
+        ad.interval_minutes = i;
+    }
+    ads_runner::start_ad(ad).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn stop_ad(id: String) -> Result<(), String> {
+    ads_runner::stop_ad(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_running_ads() -> Result<Vec<String>, String> {
+    ads_runner::list_running_ads().map_err(|e| e.to_string())
 }
 
 /// Tauri command to validate request tags
@@ -240,6 +286,15 @@ pub fn run() {
             player_assets::fetch_player_inventory,
             // targeted catalog lookup by ids
             get_catalog_items_by_ids,
+            // ads storage
+            list_ads,
+            save_ad,
+            delete_ad,
+            get_ad,
+            // ads runner (start/stop/list)
+            start_ad,
+            stop_ad,
+            list_running_ads,
             generate_verification_code,
             verify_user,
             // avatar thumbnails for user search
