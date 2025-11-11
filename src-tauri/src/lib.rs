@@ -10,11 +10,9 @@ mod rolimons_players;
 mod trade_ad;
 mod verification;
 
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
-use std::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TradeAdRequest {
@@ -309,9 +307,16 @@ async fn get_full_catalog(search: Option<String>) -> Result<serde_json::Value, S
 
 /// Tauri command: fetch a player's inventory and enrich with catalog metadata
 #[tauri::command]
-async fn fetch_enriched_inventory(player_id: u64) -> Result<serde_json::Value, String> {
+async fn fetch_enriched_inventory(
+    player_id: Option<u64>,
+    playerId: Option<u64>,
+) -> Result<serde_json::Value, String> {
+    // Accept either `player_id` (snake_case) or `playerId` (camelCase) from the frontend.
+    let pid = player_id
+        .or(playerId)
+        .ok_or_else(|| "player_id is required".to_string())?;
     // call existing player assets inventory fetch
-    let inv = crate::player_assets::fetch_player_inventory(player_id)
+    let inv = crate::player_assets::fetch_player_inventory(pid)
         .await
         .map_err(|e| e.to_string())?;
     let items_arr = inv
@@ -323,12 +328,18 @@ async fn fetch_enriched_inventory(player_id: u64) -> Result<serde_json::Value, S
     // collect missing catalog ids
     let mut missing = Vec::new();
     for it in &items_arr {
-        if let Some(cid) = it
-            .get("catalog_id")
-            .or_else(|| it.get("catalogId"))
-            .and_then(|v| v.as_i64())
-        {
-            missing.push(cid as u64);
+        // catalog id may be a number or a string (player_assets returns keys as strings).
+        if let Some(v) = it.get("catalog_id").or_else(|| it.get("catalogId")) {
+            let maybe = if v.is_number() {
+                v.as_u64()
+            } else if v.is_string() {
+                v.as_str().and_then(|s| s.parse::<u64>().ok())
+            } else {
+                None
+            };
+            if let Some(cid) = maybe {
+                missing.push(cid);
+            }
         }
     }
     missing.sort_unstable();
@@ -353,11 +364,19 @@ async fn fetch_enriched_inventory(player_id: u64) -> Result<serde_json::Value, S
     let enriched: Vec<JsonValue> = items_arr
         .into_iter()
         .map(|mut inv_item| {
+            // parse catalog id from number or string
             let cid = inv_item
                 .get("catalog_id")
                 .or_else(|| inv_item.get("catalogId"))
-                .and_then(|v| v.as_i64())
-                .map(|v| v as u64);
+                .and_then(|v| {
+                    if v.is_number() {
+                        v.as_u64()
+                    } else if v.is_string() {
+                        v.as_str().and_then(|s| s.parse::<u64>().ok())
+                    } else {
+                        None
+                    }
+                });
             if let Some(c) = cid {
                 if let Some(meta) = catalog_map.get(&c) {
                     // merge selected fields
