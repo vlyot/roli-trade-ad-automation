@@ -57,5 +57,5 @@ cargo build --release
 - [x] **Automatic trade ad posting every n minutes** (n is variable and determined by user, minimum 15)
 - [x] **Login as specific user** (implemented):
 - [x] **Search for items using Abbreviation instead of item ids** 
-- [ ] Running app (posting trade ads) as a background process
-- [ ] Opening the app to toggle trade ads on system startup
+
+- [ ] **Open to suggestions/improvements**

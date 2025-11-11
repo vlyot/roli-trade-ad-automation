@@ -16,6 +16,11 @@ import {
   Alert,
   Container,
   Avatar,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import { Search as SearchIcon } from '@mui/icons-material';
 
@@ -74,7 +79,7 @@ const Login: React.FC<LoginProps> = ({ onUserSelected }) => {
         });
 
         const players = resp?.players ?? [];
-        setDebugLogs((d) => [...d, `Search returned ${players.length} results (Rolimons)`]);
+        //setDebugLogs((d) => [...d, `Search returned ${players.length} results (Rolimons)`]);
 
         // Map Rolimons players to our RobloxUser shape (no thumbnail yet)
         const mapped: RobloxUser[] = players.map((p) => ({
@@ -112,7 +117,7 @@ const Login: React.FC<LoginProps> = ({ onUserSelected }) => {
   // Fetch thumbnails: try batch, then fallback to single fetches for missing ids
   const fetchThumbnails = async (ids: string[]) => {
     try {
-      setDebugLogs((d) => [...d, `Fetching thumbnails for ${ids.length} ids (batch)`]);
+      //setDebugLogs((d) => [...d, `Fetching thumbnails for ${ids.length} ids (batch)`]);
       // Convert to numbers for backend command
       const numericIds = ids.map((s) => Number(s));
       // pass both camelCase and snake_case keys to satisfy Tauri's arg mapping
@@ -128,7 +133,7 @@ const Login: React.FC<LoginProps> = ({ onUserSelected }) => {
       // Check for missing ids
       const missing = ids.filter((id) => !(id in batchMap));
       if (missing.length > 0) {
-        setDebugLogs((d) => [...d, `Batch missing ${missing.length} thumbnails, fetching individually`]);
+        //setDebugLogs((d) => [...d, `Batch missing ${missing.length} thumbnails, fetching individually`]);
         // Fetch individually in parallel but limit concurrency
         const promises = missing.map((mid) =>
           invoke<Record<string, string>>('fetch_avatar_thumbnails', { userIds: [Number(mid)], user_ids: [Number(mid)] }).then(
@@ -173,6 +178,63 @@ const Login: React.FC<LoginProps> = ({ onUserSelected }) => {
     onUserSelected(user);
   };
 
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [howToContent, setHowToContent] = useState<string>('');
+
+  // Minimal markdown -> HTML converter (same-lightweight as used in App)
+  const markdownToHtml = (md: string) => {
+    if (!md) return '';
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = md.split(/\r?\n/);
+    let out = '';
+    let inList = false;
+    let inCode = false;
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i];
+      if (line.trim().startsWith('```')) {
+        inCode = !inCode;
+        out += inCode ? '<pre><code>' : '</code></pre>';
+        continue;
+      }
+      if (inCode) {
+        out += esc(line) + '\n';
+        continue;
+      }
+      const h = line.match(/^\s*(#{1,6})\s+(.*)$/);
+      if (h) {
+        const level = h[1].length;
+        if (inList) { out += '</ul>'; inList = false; }
+        out += `<h${level}>${esc(h[2])}</h${level}>`;
+        continue;
+      }
+      const img = line.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+      if (img) {
+        if (inList) { out += '</ul>'; inList = false; }
+        out += `<p><img src="${esc(img[2])}" alt="${esc(img[1])}" style="max-width:100%"/></p>`;
+        continue;
+      }
+      const ul = line.match(/^\s*[-*]\s+(.*)$/);
+      if (ul) {
+        if (!inList) { out += '<ul>'; inList = true; }
+        out += `<li>${esc(ul[1])}</li>`;
+        continue;
+      }
+      if (/^\s*-{3,}\s*$/.test(line)) {
+        if (inList) { out += '</ul>'; inList = false; }
+        out += '<hr/>';
+        continue;
+      }
+      if (line.trim() === '') {
+        if (inList) { out += '</ul>'; inList = false; }
+        continue;
+      }
+      let text = esc(line).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>');
+      out += `<p>${text}</p>`;
+    }
+    if (inList) out += '</ul>';
+    return out;
+  };
+
   return (
     <Container maxWidth="sm">
       <Box
@@ -188,6 +250,19 @@ const Login: React.FC<LoginProps> = ({ onUserSelected }) => {
           <Typography variant="h4" gutterBottom align="center" sx={{ mb: 3 }}>
             Verify your Roblox account to use Roli Trade Automation
           </Typography>
+
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+            <Button variant="outlined" size="small" onClick={async () => {
+              setShowHowTo(true);
+              try {
+                const resp = await fetch('/how-to-use.md');
+                if (resp.ok) setHowToContent(await resp.text());
+                else setHowToContent('Could not load guide.');
+              } catch (e) {
+                setHowToContent('Could not load guide.');
+              }
+            }}>How to use</Button>
+          </Box>
 
           <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
             Enter your Roblox username to get started
@@ -277,6 +352,16 @@ const Login: React.FC<LoginProps> = ({ onUserSelected }) => {
               ))
             )}
           </Paper>
+
+          <Dialog open={showHowTo} onClose={() => setShowHowTo(false)} maxWidth="md" fullWidth>
+            <DialogTitle>How to use</DialogTitle>
+            <DialogContent dividers>
+              <div dangerouslySetInnerHTML={{ __html: markdownToHtml(howToContent) }} />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setShowHowTo(false)}>Return to login</Button>
+            </DialogActions>
+          </Dialog>
 
           {/* NOTE: duplicate results list removed — results are shown above. */}
         </Paper>

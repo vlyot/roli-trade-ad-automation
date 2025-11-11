@@ -8,13 +8,16 @@ This quick guide walks through verifying your Roblox account and posting trade a
 
 Before posting, verify your Roblox profile contains a generated verification code.
 
-1. Open the app and click "Login" (if not already logged in).
+1. Enter and find your username.
 2. Generate a verification code from the app.
 
 
-![Verify account placeholder](/images/verify-account.png)
+![Verify account placeholder](./images/verify-account-1.png)
 
 - Go to your Roblox profile > About section and paste the generated verification code there.
+
+![Verify account placeholder](./images/verify-account-2.png)
+
 - Wait a few moments for Roblox to save the description, then click "Verify" in the app.
 
 
@@ -22,9 +25,8 @@ Before posting, verify your Roblox profile contains a generated verification cod
 
 ## 2. Load your inventory
 
-Once verified, enter your Player ID (or use the logged-in account). The app will load your inventory and enrich each instance with catalog metadata.
+Once verified, the app will load your inventory and enrich each instance with catalog metadata.
 
-![Inventory example placeholder](/images/inventory.png)
 
 Notes:
 - Inventory is refreshed automatically every 20 minutes.
@@ -37,7 +39,7 @@ Notes:
 - Offer: select up to 4 items from your inventory.
 - Request: select up to 4 catalog items or tags describing what you want.
 
-![Build ad placeholder](/images/build-ad.png)
+![Build ad placeholder](./images/build-ad.png)
 
 Tips:
 - Use the search box to find catalog items by name or abbreviation.
@@ -50,11 +52,12 @@ Tips:
 - Click "Save as ad" to persist the current offer/request as a reusable ad.
 - Open the Ads manager to view saved ads, set a global posting interval (minimum 15 minutes), and start/stop runners.
 
-![Ads manager placeholder](/images/ads-manager.png)
+![Ads manager placeholder](./images/ads-manager.png)
+
+- Click the play button and it will run every interval you set, defaulted to 15 minutes.
 
 Important:
-- When using a global interval, per-ad interval badges are hidden to reduce clutter.
-- The app prevents intervals shorter than 15 minutes at both client and backend.
+- The app prevents intervals shorter than 15 minutes since the cooldown is 15.
 
 ---
 
