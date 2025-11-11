@@ -10,7 +10,11 @@ mod rolimons_players;
 mod trade_ad;
 mod verification;
 
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TradeAdRequest {
@@ -106,6 +110,10 @@ fn list_ads() -> Result<Vec<ads_storage::AdData>, String> {
 
 #[tauri::command]
 fn save_ad(ad: ads_storage::AdData) -> Result<(), String> {
+    // Validate interval: enforce minimum 15 minutes
+    if ad.interval_minutes < 15 {
+        return Err("Interval must be at least 15 minutes".to_string());
+    }
     ads_storage::save_ad(&ad).map_err(|e| e.to_string())
 }
 
@@ -122,13 +130,24 @@ fn get_ad(id: String) -> Result<Option<ads_storage::AdData>, String> {
 // ===== Ads runner commands =====
 
 #[tauri::command]
-fn start_ad(id: String, interval_minutes: Option<u64>) -> Result<(), String> {
+fn start_ad(
+    window: tauri::Window,
+    id: String,
+    interval_minutes: Option<u64>,
+) -> Result<(), String> {
     let ad_opt = ads_storage::get_ad(&id).map_err(|e| e.to_string())?;
     let mut ad = ad_opt.ok_or_else(|| "Ad not found".to_string())?;
     if let Some(i) = interval_minutes {
+        if i < 15 {
+            return Err("Interval must be at least 15 minutes".to_string());
+        }
         ad.interval_minutes = i;
     }
-    ads_runner::start_ad(ad).map_err(|e| e.to_string())
+    // Validate stored ad interval as well
+    if ad.interval_minutes < 15 {
+        return Err("Interval must be at least 15 minutes".to_string());
+    }
+    ads_runner::start_ad(ad, window).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -266,6 +285,121 @@ fn logout() -> Result<(), String> {
     auth_storage::clear_auth().map_err(|e| e.to_string())
 }
 
+/// Tauri command: fetch the full catalog for a given search term (no caching)
+#[tauri::command]
+async fn get_full_catalog(search: Option<String>) -> Result<serde_json::Value, String> {
+    // Fetch via existing fetch_item_details with a very large page size and return fresh results.
+    match trade_ad::fetch_item_details(1usize, 10_000_000usize, search.clone()).await {
+        Ok((items, _total)) => {
+            // convert ItemInfo -> JsonValue and filter rap > 0
+            let mut filtered: Vec<serde_json::Value> = Vec::with_capacity(items.len());
+            for it in items.into_iter() {
+                if it.rap > 0 {
+                    if let Ok(v) = serde_json::to_value(&it) {
+                        filtered.push(v);
+                    }
+                }
+            }
+            let t = filtered.len();
+            Ok(serde_json::json!({"items": filtered, "total": t}))
+        }
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Tauri command: fetch a player's inventory and enrich with catalog metadata
+#[tauri::command]
+async fn fetch_enriched_inventory(player_id: u64) -> Result<serde_json::Value, String> {
+    // call existing player assets inventory fetch
+    let inv = crate::player_assets::fetch_player_inventory(player_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let items_arr = inv
+        .get("items")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    // collect missing catalog ids
+    let mut missing = Vec::new();
+    for it in &items_arr {
+        if let Some(cid) = it
+            .get("catalog_id")
+            .or_else(|| it.get("catalogId"))
+            .and_then(|v| v.as_i64())
+        {
+            missing.push(cid as u64);
+        }
+    }
+    missing.sort_unstable();
+    missing.dedup();
+
+    let mut catalog_map: HashMap<u64, JsonValue> = HashMap::new();
+    if !missing.is_empty() {
+        match trade_ad::fetch_items_by_ids(missing.clone()).await {
+            Ok(ci) => {
+                for item in ci {
+                    let idv = item.id;
+                    if let Ok(jv) = serde_json::to_value(&item) {
+                        catalog_map.insert(idv as u64, jv);
+                    }
+                }
+            }
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+
+    // enrich inventory entries
+    let enriched: Vec<JsonValue> = items_arr
+        .into_iter()
+        .map(|mut inv_item| {
+            let cid = inv_item
+                .get("catalog_id")
+                .or_else(|| inv_item.get("catalogId"))
+                .and_then(|v| v.as_i64())
+                .map(|v| v as u64);
+            if let Some(c) = cid {
+                if let Some(meta) = catalog_map.get(&c) {
+                    // merge selected fields
+                    if let Some(name) = meta.get("name") {
+                        inv_item
+                            .as_object_mut()
+                            .unwrap()
+                            .insert("name".to_string(), name.clone());
+                    }
+                    if let Some(abbr) = meta.get("abbreviation") {
+                        inv_item
+                            .as_object_mut()
+                            .unwrap()
+                            .insert("abbreviation".to_string(), abbr.clone());
+                    }
+                    if let Some(rap) = meta.get("rap") {
+                        inv_item
+                            .as_object_mut()
+                            .unwrap()
+                            .insert("rap".to_string(), rap.clone());
+                    }
+                    if let Some(value) = meta.get("value") {
+                        inv_item
+                            .as_object_mut()
+                            .unwrap()
+                            .insert("value".to_string(), value.clone());
+                    }
+                    if let Some(th) = meta.get("thumbnail") {
+                        inv_item
+                            .as_object_mut()
+                            .unwrap()
+                            .insert("thumbnail".to_string(), th.clone());
+                    }
+                }
+            }
+            inv_item
+        })
+        .collect();
+
+    Ok(serde_json::json!({"items": enriched}))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -286,6 +420,7 @@ pub fn run() {
             player_assets::fetch_player_inventory,
             // targeted catalog lookup by ids
             get_catalog_items_by_ids,
+            get_full_catalog,
             // ads storage
             list_ads,
             save_ad,
@@ -299,6 +434,7 @@ pub fn run() {
             verify_user,
             // avatar thumbnails for user search
             avatar_thumbnails::fetch_avatar_thumbnails,
+            fetch_enriched_inventory,
             save_auth_data,
             load_auth_data,
             update_roli_verification,

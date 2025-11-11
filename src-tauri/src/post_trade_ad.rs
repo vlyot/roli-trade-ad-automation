@@ -68,5 +68,6 @@ pub async fn post_trade_ad_direct(
         return Err(anyhow!("Failed to post trade ad: {} - {}", status, text));
     }
 
-    Ok(format!("Trade ad posted successfully! Response: {}", text))
+    // Return a concise, UI-friendly success string (frontend will display this)
+    Ok("trade ad post success".to_string())
 }

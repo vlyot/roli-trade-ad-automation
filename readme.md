@@ -54,9 +54,8 @@ cargo build --release
 - [x] **Manual trade ad posting** (CLI) (Depreciated)
 - [x] **Direct API mode** 
 - [x] **GUI interface** (Tauri + React )
-- [ ] **Automatic trade ad posting every n minutes** (n is variable and determined by user, minimum 15)
+- [x] **Automatic trade ad posting every n minutes** (n is variable and determined by user, minimum 15)
 - [x] **Login as specific user** (implemented):
-
-- [x] **Search for items using NLP instead of item ids** 
+- [x] **Search for items using Abbreviation instead of item ids** 
 - [ ] Running app (posting trade ads) as a background process
 - [ ] Opening the app to toggle trade ads on system startup

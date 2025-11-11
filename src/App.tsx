@@ -1,6 +1,6 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, ChangeEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Box, Button, Card, CardContent, Typography, Chip, ThemeProvider, createTheme, CssBaseline, IconButton, CircularProgress } from "@mui/material";
+import { Box, Button, Card, CardContent, Typography, Chip, ThemeProvider, createTheme, CssBaseline, IconButton, CircularProgress, Avatar, TextField } from "@mui/material";
 import { Logout as LogoutIcon } from "@mui/icons-material";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import LoginFlow from "./components/LoginFlow";
@@ -10,7 +10,7 @@ import SelectorButtons from "./components/SelectorButtons";
 import SearchBar from "./components/SearchBar";
 import ItemsGrid from "./components/ItemsGrid";
 import PaginationControls from "./components/PaginationControls";
-import PlayerAndCookieInputs from "./components/PlayerAndCookieInputs";
+// PlayerAndCookieInputs will be shown only on-demand when verification is required
 import TerminalLogs from "./components/TerminalLogs";
 import AdvertisementManager from "./components/AdvertisementManager";
 // InventoryPicker removed: inventory will load automatically and be enriched from catalog data
@@ -31,6 +31,7 @@ const darkTheme = createTheme({ palette: { mode: "dark", primary: { main: "#3b82
 
 function MainApp() {
   const { authData, logout: authLogout, updateRoliVerification } = useAuth();
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [playerId, setPlayerId] = useState("");
   const [roliVerification, setRoliVerification] = useState("");
   const [offerItems, setOfferItems] = useState<number[]>([]);
@@ -49,6 +50,16 @@ function MainApp() {
       if (authData.roli_verification) {
         setRoliVerification(authData.roli_verification);
       }
+      // fetch avatar thumbnail for header
+      (async () => {
+        try {
+          const map: Record<string, string> = await invoke('fetch_avatar_thumbnails', { userIds: [Number(authData.user_id)], user_ids: [Number(authData.user_id)] });
+          const url = map?.[String(authData.user_id)];
+          if (url) setAvatarUrl(url);
+        } catch (e) {
+          // ignore
+        }
+      })();
     }
   }, [authData]);
   // full-catalog cache per search term to enable instant client-side pagination
@@ -60,6 +71,7 @@ function MainApp() {
   const [isEnriching, setIsEnriching] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<Array<any>>([]);
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
+  const [showVerificationPrompt, setShowVerificationPrompt] = useState(false);
   const [selectorMode, setSelectorMode] = useState<"offer" | "request">("offer");
   const [searchValue, setSearchValue] = useState("");
 
@@ -146,11 +158,8 @@ function MainApp() {
           return;
         }
 
-        // Invoke once and request a very large per_page so backend returns all items at once
-        // The backend fetch_item_details reads all items from Rolimons and then slices by page/per_page,
-        // so asking for a huge per_page returns the full list in one call.
-        const bigPerPage = 10_000_000;
-        const resAll: any = await invoke("get_catalog_items", { page: 1, perPage: bigPerPage, search: searchValue || null });
+  // Ask the backend for a cached full catalog for this search term
+  const resAll: any = await invoke("get_full_catalog", { search: searchValue || null });
         if (!active) return;
         if (!resAll || !Array.isArray(resAll.items)) {
           setCatalogItems([]);
@@ -231,7 +240,8 @@ function MainApp() {
     setIsEnriching(true);
     appendLog(`Loading inventory for player ${pid}...`);
     try {
-      const res: any = await invoke("fetch_player_inventory", { playerId: pid });
+      // Use backend-enriched inventory which returns inventory items with catalog metadata merged
+      const res: any = await invoke("fetch_enriched_inventory", { playerId: pid });
       const itemsArr: any[] = (res && Array.isArray(res.items)) ? res.items : [];
       if (itemsArr.length === 0) {
         appendLog("No inventory returned");
@@ -239,57 +249,10 @@ function MainApp() {
         setIsEnriching(false);
         return;
       }
-
-      // Normalize to objects with instance id and catalog id (catalog_id may be string key)
-      const mapped = itemsArr.map((it: any) => ({ id: it.instance_id ?? it.id ?? null, catalog_id: it.catalog_id ?? it.catalogId ?? it.catalog ?? null, held: !!it.held }));
-
-      // Build a catalog lookup from any cached full-catalog entries and current catalogItems
-      const catalogMap = new Map<number, any>();
-      for (const entry of catalogFullCache.current.values()) {
-        for (const ci of entry.items) catalogMap.set(ci.id, ci);
-      }
-      for (const ci of catalogItems) catalogMap.set(ci.id, ci);
-
-      // Collect missing catalog ids
-      const missingSet = new Set<number>();
-      for (const m of mapped) {
-        const cid = Number(m.catalog_id);
-        if (cid && !catalogMap.has(cid)) missingSet.add(cid);
-      }
-
-      if (missingSet.size > 0) {
-        const missingIds = Array.from(missingSet);
-        appendLog(`Enriching inventory: fetching ${missingIds.length} missing catalog items...`);
-        try {
-          const resIds: any = await invoke("get_catalog_items_by_ids", { ids: missingIds });
-          if (resIds && Array.isArray(resIds.items)) {
-            for (const it of resIds.items) catalogMap.set(it.id, it);
-            // Also merge into full cache under empty key for future lookups
-            const existing = catalogFullCache.current.get("")?.items ?? [];
-            catalogFullCache.current.set("", { items: [...existing, ...(resIds.items || [])], total: (existing.length + (resIds.items || []).length) });
-            appendLog(`Enriched with ${resIds.items.length} items`);
-          }
-        } catch (e: any) {
-          appendLog(`Failed targeted catalog fetch: ${String(e)}`);
-        }
-      }
-
-      const enriched = mapped.map((m: any) => {
-        const cid = Number(m.catalog_id);
-        const meta = catalogMap.get(cid);
-        return {
-          id: m.id,
-          catalog_id: cid,
-          held: m.held,
-          name: meta?.name ?? null,
-          abbreviation: meta?.abbreviation ?? null,
-          rap: meta?.rap ?? 0,
-          value: meta?.value ?? 0,
-          thumbnail: meta?.thumbnail ?? null,
-        };
-      });
-      setInventoryItems(enriched.filter((e: any) => e.id != null));
-      appendLog(`Inventory loaded: ${enriched.length} items`);
+      // Normalize to expected shape (instance id as id, catalog_id numeric)
+      const mapped = itemsArr.map((it: any) => ({ id: it.instance_id ?? it.id ?? null, catalog_id: Number(it.catalog_id ?? it.catalogId ?? it.catalog ?? it.catalog_id), held: !!it.held, name: it.name ?? null, abbreviation: it.abbreviation ?? null, rap: it.rap ?? 0, value: it.value ?? 0, thumbnail: it.thumbnail ?? null }));
+      setInventoryItems(mapped.filter((e: any) => e.id != null));
+      appendLog(`Inventory loaded: ${mapped.length} items`);
     } catch (err: any) {
       appendLog(`Failed to load inventory: ${String(err)}`);
       setInventoryItems([]);
@@ -320,8 +283,7 @@ function MainApp() {
       if (catalogFullCache.current.has(key)) return;
       appendLog("Prefetching full catalog for app startup...");
       try {
-        const bigPerPage = 10_000_000;
-        const resAll: any = await invoke("get_catalog_items", { page: 1, perPage: bigPerPage, search: null });
+        const resAll: any = await invoke("get_full_catalog", { search: null });
         if (!active) return;
         if (!resAll || !Array.isArray(resAll.items)) {
           appendLog("Prefetch: no items returned from catalog API");
@@ -391,6 +353,18 @@ function MainApp() {
       if (response && Array.isArray(response.logs)) setTerminalLogs(response.logs);
       else if (response && response.logs) setTerminalLogs(Array.isArray(response.logs) ? response.logs : [String(response.logs)]);
       else appendLog("Success!");
+      // If backend indicates a verification problem, prompt the user for Roli verification cookie
+      const logsArr: string[] = response?.logs ?? [];
+      const joined = logsArr.join('\n').toLowerCase();
+      if (!response?.success && joined.includes('verification')) {
+        setShowVerificationPrompt(true);
+        // clear any stored roli verification locally to force re-entry
+        setRoliVerification('');
+        appendLog('Roli verification required — enter your cookie to continue');
+      } else {
+        // clear prompt on success
+        if (response?.success) setShowVerificationPrompt(false);
+      }
       return response;
     } catch (err: any) {
       const errMsg = err?.message ?? String(err);
@@ -410,11 +384,11 @@ function MainApp() {
     setTerminalLogs([]);
     appendLog("Connecting...");
     try {
-      const playerIdNum = parseInt(playerId || "0");
-      if (isNaN(playerIdNum) || playerIdNum <= 0) throw new Error("Please enter a valid player ID");
+      const playerIdNum = parseInt(playerId || (authData ? String(authData.user_id) : "0"));
+      if (isNaN(playerIdNum) || playerIdNum <= 0) throw new Error("Please enter a valid player ID or login");
       if (offerItems.length === 0) throw new Error("Please add at least one offer item");
       if (requestItems.length + selectedTags.length === 0) throw new Error("Please add at least one request item or tag");
-      if (!roliVerification.trim()) throw new Error("Please enter your Roli Verification cookie");
+      // Do not require roliVerification upfront; backend will prompt if needed
 
       const offer_item_ids_mapped = computeOfferCatalogIds();
       appendLog(`Mapped ${offerItems.length} offer instances -> ${offer_item_ids_mapped.length} catalog ids`);
@@ -432,6 +406,7 @@ function MainApp() {
       setTerminalLogs([errMsg]);
       if (errMsg.toLowerCase().includes("roli") && errMsg.toLowerCase().includes("verification")) {
         setRoliVerification("");
+        setShowVerificationPrompt(true);
         appendLog("Please enter a valid Roli Verification cookie");
       }
     } finally {
@@ -453,9 +428,12 @@ function MainApp() {
             {/* Welcome message and logout */}
             {authData && (
               <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2, p: 1.5, bgcolor: "#4a525c", borderRadius: 1 }}>
-                <Typography variant="subtitle1" sx={{ color: "white", fontWeight: 500 }}>
-                  Welcome, {authData.display_name}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Avatar src={avatarUrl ?? undefined} sx={{ width: 36, height: 36 }} />
+                  <Typography variant="subtitle1" sx={{ color: "white", fontWeight: 500 }}>
+                    Welcome, {authData.display_name}
+                  </Typography>
+                </Box>
                 <IconButton onClick={authLogout} size="small" sx={{ color: "white" }} title="Logout">
                   <LogoutIcon />
                 </IconButton>
@@ -544,7 +522,13 @@ function MainApp() {
               </Box>
             )}
 
-            <PlayerAndCookieInputs playerId={playerId} setPlayerId={setPlayerId} roliVerification={roliVerification} setRoliVerification={setRoliVerification} onPost={handleSubmit} />
+            {/* Show verification input only when backend requests it */}
+            {showVerificationPrompt && (
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', justifyContent: 'center', mb: 1 }}>
+                <TextField label="Roli verification" size="small" type="password" value={roliVerification} onChange={(e: ChangeEvent<HTMLInputElement>) => setRoliVerification(e.target.value)} sx={{ width: 360 }} />
+                <Button variant="contained" onClick={handleSubmit} disabled={isLoading}>{isLoading ? 'Posting...' : 'Submit'}</Button>
+              </Box>
+            )}
 
             <TerminalLogs logs={terminalLogs} />
 
