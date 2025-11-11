@@ -64,4 +64,4 @@ Close this guide using the "Return to app" button or the dialog close control.
 
 ---
 
-Thank you for using the app. If anything is unclear, open an issue or ask for clarification.
+Thank you for using the app. If anything is unclear, open an issue in the forum.
