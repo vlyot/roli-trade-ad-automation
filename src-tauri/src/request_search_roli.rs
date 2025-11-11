@@ -108,9 +108,9 @@ pub async fn fetch_item_details(
         items
     };
 
-    // Sort by RAP desc
+    // Sort by value desc (prefer higher value items first for requests)
     let mut sorted = filtered;
-    sorted.sort_by(|a, b| b.rap.cmp(&a.rap));
+    sorted.sort_by(|a, b| b.value.cmp(&a.value));
 
     let total = sorted.len();
     let start = page.saturating_sub(1) * per_page;

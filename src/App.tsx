@@ -581,6 +581,8 @@ function MainApp() {
                       offer_item_ids: computeOfferCatalogIds(),
                       request_item_ids: requestItems,
                       request_tags: selectedTags,
+                      // 0 means inherit the global interval (set in Ads manager)
+                      interval_minutes: 0,
                     };
                     await invoke('save_ad', { ad });
                     setAdsRefreshSignal((s) => s + 1);
@@ -613,8 +615,6 @@ function MainApp() {
               </Box>
             )}
 
-            <ItemsGrid items={filteredItems as any} onSelect={addItem} />
-
             {selectorMode === "request" && (
               <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.75, justifyContent: "center", mb: 2 }}>
                 {AVAILABLE_TAGS.map((tag) => (
@@ -622,6 +622,8 @@ function MainApp() {
                 ))}
               </Box>
             )}
+
+            <ItemsGrid items={filteredItems as any} onSelect={addItem} />
 
             {/* Show verification input only when backend requests it */}
             {showVerificationPrompt && (

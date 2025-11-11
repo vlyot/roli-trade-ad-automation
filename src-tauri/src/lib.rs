@@ -108,9 +108,11 @@ fn list_ads() -> Result<Vec<ads_storage::AdData>, String> {
 
 #[tauri::command]
 fn save_ad(ad: ads_storage::AdData) -> Result<(), String> {
-    // Validate interval: enforce minimum 15 minutes
-    if ad.interval_minutes < 15 {
-        return Err("Interval must be at least 15 minutes".to_string());
+    // Validate interval: allow 0 to mean "use global interval"; otherwise enforce minimum 15 minutes
+    if ad.interval_minutes != 0 && ad.interval_minutes < 15 {
+        return Err(
+            "Interval must be at least 15 minutes or 0 to inherit global interval".to_string(),
+        );
     }
     ads_storage::save_ad(&ad).map_err(|e| e.to_string())
 }
