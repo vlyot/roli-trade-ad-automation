@@ -1,0 +1,73 @@
+name: Build and publish release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-and-package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install npm deps
+        working-directory: .
+        run: |
+          npm ci
+
+      - name: Build frontend
+        working-directory: .
+        run: |
+          npm run build:frontend
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          profile: minimal
+
+      - name: Install Rust (stable)
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Build Rust backend (release)
+        working-directory: src-tauri
+        run: |
+          cargo build --release
+
+      - name: Assemble release folder
+        run: |
+          $root = "$GITHUB_WORKSPACE"
+          $out = Join-Path $root "release\roli-trade-ad-automation-${{ github.ref_name }}"
+          Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $out | Out-Null
+          Copy-Item -Path (Join-Path $root "src-tauri\target\release\roli-trade-ad-automation.exe") -Destination $out -Force
+          Copy-Item -Path (Join-Path $root "src-tauri\target\release\roli_trade_ad_automation_lib.dll") -Destination $out -Force -ErrorAction SilentlyContinue
+          # Attempt to copy WebView2Loader for x64 if present
+          $wv = Get-ChildItem -Path (Join-Path $root 'src-tauri\target\release\build') -Filter WebView2Loader.dll -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1
+          if ($wv) { Copy-Item -Path $wv.FullName -Destination $out -Force }
+          Copy-Item -Path (Join-Path $root 'dist') -Destination $out -Recurse -Force
+          Compress-Archive -Path (Join-Path $out '*') -DestinationPath (Join-Path $root "release\roli-trade-ad-automation-${{ github.ref_name }}.zip") -Force
+
+      - name: Create GitHub Release and upload asset
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/roli-trade-ad-automation-${{ github.ref_name }}.zip
+          asset_name: roli-trade-ad-automation-${{ github.ref_name }}.zip
+          asset_content_type: application/zip
