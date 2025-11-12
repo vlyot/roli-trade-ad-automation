@@ -1,0 +1,5 @@
+
+# Ignore built releases and frontend build output
+/dist
+/release
+
