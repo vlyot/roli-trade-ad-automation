@@ -58,6 +58,7 @@ jobs:
           Compress-Archive -Path (Join-Path $out '*') -DestinationPath (Join-Path $root "release\roli-trade-ad-automation-${{ github.ref_name }}.zip") -Force
 
       - name: Create GitHub Release and upload asset
+        id: create_release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
