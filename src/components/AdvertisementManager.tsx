@@ -167,15 +167,23 @@ export default function AdvertisementManager({
       }
       // If a post failed and it's likely verification related, re-open dialog for correction
       if (typeof message === 'string' && message.startsWith('trade ad post failed') && id) {
-        if (verificationOpenFor !== id) {
-          (async () => {
-            try { await invoke('stop_ad', { id }); } catch (e) {}
-            setCountdowns((s) => { const n = { ...s }; delete n[id]; return n; });
-            try { await refreshRunning(); } catch {}
-          })();
-          const ad = (ads || []).find((a) => a.id === id);
-          setVerificationInput((authVerification ?? (ad?.roli_verification as string) ?? ''));
-          setVerificationOpenFor(id);
+        // Some failures are benign (e.g. ad creation cooldown). Ignore those and don't prompt for verification.
+        // Example message payload contains: {"success":false,"code":7105,"message":"Ad creation cooldown has not elapsed"}
+        const lower = message.toLowerCase();
+        if (lower.includes('"code":7105') || lower.includes('ad creation cooldown')) {
+          // just log the message and continue; don't stop the runner or open the verification dialog
+          // (the appendLog call above already wrote the message)
+        } else {
+          if (verificationOpenFor !== id) {
+            (async () => {
+              try { await invoke('stop_ad', { id }); } catch (e) {}
+              setCountdowns((s) => { const n = { ...s }; delete n[id]; return n; });
+              try { await refreshRunning(); } catch {}
+            })();
+            const ad = (ads || []).find((a) => a.id === id);
+            setVerificationInput((authVerification ?? (ad?.roli_verification as string) ?? ''));
+            setVerificationOpenFor(id);
+          }
         }
       }
     }).then((u) => {
