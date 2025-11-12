@@ -39,9 +39,12 @@ jobs:
           cargo build --release
 
       - name: Assemble release folder
+        shell: pwsh
         run: |
-          $root = "$GITHUB_WORKSPACE"
-          $out = Join-Path $root "release\roli-trade-ad-automation-${{ github.ref_name }}"
+          # Use the GitHub-provided workspace environment variable from PowerShell
+          $root = $env:GITHUB_WORKSPACE
+          $tag = "${{ github.ref_name }}"
+          $out = Join-Path $root "release\roli-trade-ad-automation-$tag"
           Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $out | Out-Null
           Copy-Item -Path (Join-Path $root "src-tauri\target\release\roli-trade-ad-automation.exe") -Destination $out -Force
@@ -50,7 +53,8 @@ jobs:
           $wv = Get-ChildItem -Path (Join-Path $root 'src-tauri\target\release\build') -Filter WebView2Loader.dll -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1
           if ($wv) { Copy-Item -Path $wv.FullName -Destination $out -Force }
           Copy-Item -Path (Join-Path $root 'dist') -Destination $out -Recurse -Force
-          Compress-Archive -Path (Join-Path $out '*') -DestinationPath (Join-Path $root "release\roli-trade-ad-automation-${{ github.ref_name }}.zip") -Force
+          $zipPath = Join-Path $root "release\roli-trade-ad-automation-$tag.zip"
+          Compress-Archive -Path (Join-Path $out '*') -DestinationPath $zipPath -Force
 
       - name: Create GitHub Release and upload asset
         id: create_release
