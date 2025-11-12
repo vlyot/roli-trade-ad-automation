@@ -4,9 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.admin.roli-trade-ad-automation",
   "build": {
-    "beforeDevCommand": "npm run dev:frontend",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+  "beforeDevCommand": "npm run dev:frontend",
+  "beforeBuildCommand": "npm run build:frontend",
     "frontendDist": "../dist"
   },
   "app": {

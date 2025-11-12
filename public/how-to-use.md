@@ -46,7 +46,18 @@ Tips:
 - Tags (e.g., ANY, DEMAND) count toward the 4-request limit.
 
 ---
+## 3.5. Verify roli verification
 
+When it is your first time posting an ad, you will be prompted to enter your roli verification cookie.
+
+Go to <a href="https://rolimons.com" target="_blank" rel="noopener noreferrer">rolimons.com</a>, open your browser's developer tools (usually F12/inspect element), and find the value of the <code>roli_verification</code> cookie.
+
+![Build ad placeholder](./images/cookie-1.png)
+![Build ad placeholder](./images/cookie-2.png)
+![Build ad placeholder](./images/cookie-3.png)
+
+
+---
 ## 4. Save and run ads
 
 - Click "Save as ad" to persist the current offer/request as a reusable ad.

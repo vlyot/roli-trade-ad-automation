@@ -2,6 +2,7 @@
 // Responsibility: Handle username search and user selection.
 
 import React, { useState, useEffect } from 'react';
+import { markdownToHtml } from '../utils/markdown';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Box,
@@ -181,59 +182,7 @@ const Login: React.FC<LoginProps> = ({ onUserSelected }) => {
   const [showHowTo, setShowHowTo] = useState(false);
   const [howToContent, setHowToContent] = useState<string>('');
 
-  // Minimal markdown -> HTML converter (same-lightweight as used in App)
-  const markdownToHtml = (md: string) => {
-    if (!md) return '';
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const lines = md.split(/\r?\n/);
-    let out = '';
-    let inList = false;
-    let inCode = false;
-    for (let i = 0; i < lines.length; i++) {
-      let line = lines[i];
-      if (line.trim().startsWith('```')) {
-        inCode = !inCode;
-        out += inCode ? '<pre><code>' : '</code></pre>';
-        continue;
-      }
-      if (inCode) {
-        out += esc(line) + '\n';
-        continue;
-      }
-      const h = line.match(/^\s*(#{1,6})\s+(.*)$/);
-      if (h) {
-        const level = h[1].length;
-        if (inList) { out += '</ul>'; inList = false; }
-        out += `<h${level}>${esc(h[2])}</h${level}>`;
-        continue;
-      }
-      const img = line.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-      if (img) {
-        if (inList) { out += '</ul>'; inList = false; }
-        out += `<p><img src="${esc(img[2])}" alt="${esc(img[1])}" style="max-width:100%"/></p>`;
-        continue;
-      }
-      const ul = line.match(/^\s*[-*]\s+(.*)$/);
-      if (ul) {
-        if (!inList) { out += '<ul>'; inList = true; }
-        out += `<li>${esc(ul[1])}</li>`;
-        continue;
-      }
-      if (/^\s*-{3,}\s*$/.test(line)) {
-        if (inList) { out += '</ul>'; inList = false; }
-        out += '<hr/>';
-        continue;
-      }
-      if (line.trim() === '') {
-        if (inList) { out += '</ul>'; inList = false; }
-        continue;
-      }
-      let text = esc(line).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>');
-      out += `<p>${text}</p>`;
-    }
-    if (inList) out += '</ul>';
-    return out;
-  };
+  // Use shared markdown renderer
 
   return (
     <Container maxWidth="sm">

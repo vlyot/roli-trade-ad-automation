@@ -38,8 +38,11 @@ pub fn start_ad(ad: crate::ads_storage::AdData, window: Window) -> Result<()> {
     }
 
     // enforce minimum interval to avoid spamming; interval is in minutes
-    if ad.interval_minutes < 15 {
-        return Err(anyhow::anyhow!("Interval must be at least 15 minutes"));
+    // allow 0 to mean "inherit global interval"; only reject non-zero intervals below 15
+    if ad.interval_minutes != 0 && ad.interval_minutes < 15 {
+        return Err(anyhow::anyhow!(
+            "Interval must be at least 15 minutes or 0 to inherit global interval"
+        ));
     }
 
     let (tx, rx) = oneshot::channel::<()>();

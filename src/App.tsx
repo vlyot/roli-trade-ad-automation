@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Box, Button, Card, CardContent, Typography, Chip, ThemeProvider, createTheme, CssBaseline, IconButton, CircularProgress, Avatar, TextField, Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
 import { Logout as LogoutIcon } from "@mui/icons-material";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { markdownToHtml } from "./utils/markdown";
 import LoginFlow from "./components/LoginFlow";
 import OfferSlots from "./components/OfferSlots";
 import RequestSlots from "./components/RequestSlots";
@@ -420,68 +421,7 @@ function MainApp() {
 
   // Scheduling and running of ads moved to Rust backend (ads_runner). Manager will call start_ad/stop_ad.
 
-  // Minimal markdown -> HTML converter used only for the in-app how-to guide.
-  // Supports headings (#..), images ![alt](url), unordered lists (- or *), and paragraphs.
-  const markdownToHtml = (md: string) => {
-    if (!md) return "";
-    // escape HTML
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const lines = md.split(/\r?\n/);
-    let out = '';
-    let inList = false;
-    let inCode = false;
-    for (let i = 0; i < lines.length; i++) {
-      let line = lines[i];
-      // code fence
-      if (line.trim().startsWith('```')) {
-        inCode = !inCode;
-        out += inCode ? '<pre><code>' : '</code></pre>';
-        continue;
-      }
-      if (inCode) {
-        out += esc(line) + '\n';
-        continue;
-      }
-      // headings
-      const h = line.match(/^\s*(#{1,6})\s+(.*)$/);
-      if (h) {
-        const level = h[1].length;
-        if (inList) { out += '</ul>'; inList = false; }
-        out += `<h${level}>${esc(h[2])}</h${level}>`;
-        continue;
-      }
-      // image
-      const img = line.match(/!\[([^\]]*)\]\(([^)]+)\)/);
-      if (img) {
-        if (inList) { out += '</ul>'; inList = false; }
-        out += `<p><img src="${esc(img[2])}" alt="${esc(img[1])}" style="max-width:100%"/></p>`;
-        continue;
-      }
-      // unordered list
-      const ul = line.match(/^\s*[-*]\s+(.*)$/);
-      if (ul) {
-        if (!inList) { out += '<ul>'; inList = true; }
-        out += `<li>${esc(ul[1])}</li>`;
-        continue;
-      }
-      // horizontal rule
-      if (/^\s*-{3,}\s*$/.test(line)) {
-        if (inList) { out += '</ul>'; inList = false; }
-        out += '<hr/>';
-        continue;
-      }
-      // paragraph
-      if (line.trim() === '') {
-        if (inList) { out += '</ul>'; inList = false; }
-        continue;
-      }
-      // inline bold/italic simple replacements
-      let text = esc(line).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>');
-      out += `<p>${text}</p>`;
-    }
-    if (inList) out += '</ul>';
-    return out;
-  };
+  // Use shared markdown renderer from src/utils/markdown.ts
 
   return (
     <ThemeProvider theme={darkTheme}>

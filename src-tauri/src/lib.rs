@@ -10,9 +10,25 @@ mod rolimons_players;
 mod trade_ad;
 mod verification;
 
+use chrono::Local;
+use dirs::data_local_dir;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::Write;
+
+// Top-level helper: write a timestamped line to the app-local log so release runs can be diagnosed.
+fn append_app_log(msg: &str) {
+    if let Some(mut dir) = data_local_dir() {
+        dir.push("roli-trade-ad-automation");
+        let _ = std::fs::create_dir_all(&dir);
+        dir.push("app.log");
+        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&dir) {
+            let _ = writeln!(f, "{}: {}", Local::now().to_rfc3339(), msg);
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TradeAdRequest {
@@ -135,19 +151,44 @@ fn start_ad(
     id: String,
     interval_minutes: Option<u64>,
 ) -> Result<(), String> {
-    let ad_opt = ads_storage::get_ad(&id).map_err(|e| e.to_string())?;
+    // use the top-level logger
+
+    let ad_opt = match ads_storage::get_ad(&id) {
+        Ok(v) => v,
+        Err(e) => {
+            let msg = format!("start_ad: failed to read ad {} from storage: {}", id, e);
+            append_app_log(&msg);
+            return Err(msg);
+        }
+    };
     let mut ad = ad_opt.ok_or_else(|| "Ad not found".to_string())?;
     if let Some(i) = interval_minutes {
         if i < 15 {
+            let msg = format!("start_ad: provided interval {} is below minimum", i);
+            append_app_log(&msg);
             return Err("Interval must be at least 15 minutes".to_string());
         }
         ad.interval_minutes = i;
     }
-    // Validate stored ad interval as well
-    if ad.interval_minutes < 15 {
-        return Err("Interval must be at least 15 minutes".to_string());
+    // Validate stored ad interval as well (0 means inherit global interval)
+    if ad.interval_minutes != 0 && ad.interval_minutes < 15 {
+        let msg = format!(
+            "start_ad: stored ad interval {} is invalid (must be 0 or >=15)",
+            ad.interval_minutes
+        );
+        append_app_log(&msg);
+        return Err(
+            "Interval must be at least 15 minutes or 0 to inherit global interval".to_string(),
+        );
     }
-    ads_runner::start_ad(ad, window).map_err(|e| e.to_string())
+    match ads_runner::start_ad(ad, window) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let msg = format!("start_ad: runner failed to start ad {}: {}", id, e);
+            append_app_log(&msg);
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]
@@ -283,6 +324,36 @@ fn update_roli_verification(roli_verification: String) -> Result<(), String> {
 #[tauri::command]
 fn logout() -> Result<(), String> {
     auth_storage::clear_auth().map_err(|e| e.to_string())
+}
+
+/// Save a global roli_verification token for the current user or create a minimal auth entry.
+#[tauri::command]
+fn save_global_verification(roli_verification: String) -> Result<(), String> {
+    match auth_storage::load_auth() {
+        Ok(Some(mut a)) => {
+            a.roli_verification = Some(roli_verification.clone());
+            auth_storage::save_auth(&a).map_err(|e| e.to_string())?;
+            append_app_log(&format!(
+                "save_global_verification: updated existing auth roli_verification"
+            ));
+            Ok(())
+        }
+        Ok(None) => {
+            // create a minimal auth entry so verification is persisted globally
+            let auth = auth_storage::AuthData {
+                user_id: 0,
+                username: "".to_string(),
+                display_name: "".to_string(),
+                roli_verification: Some(roli_verification.clone()),
+            };
+            auth_storage::save_auth(&auth).map_err(|e| e.to_string())?;
+            append_app_log(&format!(
+                "save_global_verification: created auth with roli_verification"
+            ));
+            Ok(())
+        }
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 /// Tauri command: fetch the full catalog for a given search term (no caching)
@@ -458,6 +529,7 @@ pub fn run() {
             fetch_enriched_inventory,
             save_auth_data,
             load_auth_data,
+            save_global_verification,
             update_roli_verification,
             logout
         ])

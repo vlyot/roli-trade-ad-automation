@@ -4,12 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tsc && vite build && tauri build",
-    "preview": "vite preview",
-    "tauri": "tauri",
-    "dev:frontend": "vite",
-    "dev:backend": "cargo build --manifest-path=src-tauri/Cargo.toml"
+  "dev": "tauri dev",
+  "build:frontend": "tsc && vite build",
+  "build": "npm run build:frontend && tauri build",
+  "preview": "vite preview",
+  "tauri": "tauri",
+  "dev:frontend": "vite",
+  "dev:backend": "cargo build --manifest-path=src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

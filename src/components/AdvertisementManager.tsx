@@ -3,7 +3,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { listen } from '@tauri-apps/api/event';
-import { Box, IconButton, Typography, Avatar, Snackbar } from "@mui/material";
+import { Box, IconButton, Typography, Avatar, Snackbar, Dialog, DialogTitle, DialogContent, TextField, DialogActions, Button } from "@mui/material";
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -46,7 +46,23 @@ export default function AdvertisementManager({
   const [intervalWarning, setIntervalWarning] = useState(false);
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackMessage, setSnackMessage] = useState<string | null>(null);
+  const [verificationOpenFor, setVerificationOpenFor] = useState<string | null>(null);
+  const [verificationInput, setVerificationInput] = useState<string>("");
+  const [verificationSubmitting, setVerificationSubmitting] = useState(false);
   const [countdowns, setCountdowns] = useState<Record<string, number>>({});
+  const [authVerification, setAuthVerification] = useState<string | null>(null);
+
+  // load global auth verification if present
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await invoke<any>('load_auth_data');
+        if (res && res.roli_verification) setAuthVerification(res.roli_verification as string);
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, []);
 
   const refresh = async () => {
     try {
@@ -73,6 +89,48 @@ export default function AdvertisementManager({
   };
   useEffect(() => { refreshRunning(); }, []);
 
+  // Verification dialog handlers
+  const handleVerificationCancel = () => {
+    setVerificationOpenFor(null);
+    setVerificationInput("");
+  };
+
+  const handleVerificationSubmit = async () => {
+    const id = verificationOpenFor;
+    if (!id) return;
+    setVerificationSubmitting(true);
+    try {
+      const ad = ads.find((a) => a.id === id);
+      if (!ad) throw new Error('Ad not found');
+      const updatedAd = { ...ad, roli_verification: verificationInput } as any;
+      // persist verification globally and on the ad
+      try {
+        await invoke('save_global_verification', { roli_verification: verificationInput });
+        setAuthVerification(verificationInput);
+      } catch (err) {
+        // ignore if global save fails; still try to save ad
+      }
+      await invoke('save_ad', { ad: updatedAd });
+      // restart the runner so it will attempt an immediate post
+      try { await invoke('stop_ad', { id }); } catch (_) {}
+      await invoke('start_ad', { id, interval_minutes: globalInterval });
+      setCountdowns((s) => ({ ...s, [id]: (globalInterval || 1) * 60 }));
+      appendLog?.(`Saved verification and restarted ad ${ad.name}`);
+      setVerificationOpenFor(null);
+      setVerificationInput("");
+      await refreshRunning();
+    } catch (e) {
+      console.error('Failed to save verification and restart ad', e);
+      let errMsg = 'Failed to save verification';
+      try { if ((e as any)?.message) errMsg = (e as any).message; else errMsg = String(e); } catch {};
+      setSnackMessage(errMsg);
+      setSnackOpen(true);
+      // leave dialog open so user can correct
+    } finally {
+      setVerificationSubmitting(false);
+    }
+  };
+
   // Listen for ad posting events from the Rust runner and append formatted messages
   const appendRef = useRef<typeof appendLog | null>(null);
   useEffect(() => { appendRef.current = appendLog ?? null; }, [appendLog]);
@@ -84,7 +142,42 @@ export default function AdvertisementManager({
     listen('ad:posted', (e: any) => {
       const payload = e.payload as any;
       const message = payload?.message ?? String(payload ?? '');
+      const id = payload?.id;
       if (message) appendRef.current?.(message);
+      // If runner skipped posting due to missing verification, prompt the user.
+      // Also stop the runner for this ad to avoid repeated skip events causing an infinite prompt loop.
+      if (message === 'trade ad post skipped (no roli_verification)' && id) {
+        // avoid re-opening the dialog if it's already open for this ad
+        if (verificationOpenFor !== id) {
+          // stop the runner for this ad to prevent repeated events
+          (async () => {
+            try {
+              await invoke('stop_ad', { id });
+            } catch (e) {
+              // ignore stop errors
+            }
+            // remove countdown and refresh running list
+            setCountdowns((s) => { const n = { ...s }; delete n[id]; return n; });
+            try { await refreshRunning(); } catch {}
+          })();
+          const ad = (ads || []).find((a) => a.id === id);
+          setVerificationInput((authVerification ?? (ad?.roli_verification as string) ?? ''));
+          setVerificationOpenFor(id);
+        }
+      }
+      // If a post failed and it's likely verification related, re-open dialog for correction
+      if (typeof message === 'string' && message.startsWith('trade ad post failed') && id) {
+        if (verificationOpenFor !== id) {
+          (async () => {
+            try { await invoke('stop_ad', { id }); } catch (e) {}
+            setCountdowns((s) => { const n = { ...s }; delete n[id]; return n; });
+            try { await refreshRunning(); } catch {}
+          })();
+          const ad = (ads || []).find((a) => a.id === id);
+          setVerificationInput((authVerification ?? (ad?.roli_verification as string) ?? ''));
+          setVerificationOpenFor(id);
+        }
+      }
     }).then((u) => {
       if (cancelled) {
         u();
@@ -271,15 +364,49 @@ export default function AdvertisementManager({
                         setSnackOpen(true);
                         return;
                       }
+                      // If this ad lacks a roli_verification, prompt the user unless a global one exists.
+                      try {
+                        const hasAdVerification = !!(a.roli_verification && String(a.roli_verification).trim());
+                        if (!hasAdVerification) {
+                          if (authVerification) {
+                            // copy global verification into the ad so it can start without a prompt
+                            const updatedAd = { ...a, roli_verification: authVerification } as any;
+                            try {
+                              await invoke('save_ad', { ad: updatedAd });
+                              setAds((prev) => prev.map((x) => x.id === a.id ? updatedAd : x));
+                              appendLog?.(`Copied global verification to ad ${a.name}`);
+                            } catch (saveErr) {
+                              console.warn('Failed to persist copied verification to ad', saveErr);
+                            }
+                          } else {
+                            // No per-ad verification and no global token — open verification dialog instead of starting
+                            setVerificationInput("");
+                            setVerificationOpenFor(a.id);
+                            return;
+                          }
+                        }
+                      } catch (_) {}
                       await invoke('start_ad', { id: a.id, interval_minutes: globalInterval });
                       setCountdowns((s) => ({ ...s, [a.id]: globalInterval * 60 }));
                       appendLog?.(`Started ad ${a.name} (every ${globalInterval}m)`);
                     }
                     await refreshRunning();
                   } catch (e) {
-                    console.error('Failed to start/stop ad', e);
-                    alert('Failed to start/stop ad');
-                  }
+                      // Extract a readable message from the thrown error and show it to the user.
+                      let errMsg = 'Failed to start/stop ad';
+                      try {
+                        if (typeof e === 'string') errMsg = e;
+                        else if ((e as any)?.message) errMsg = (e as any).message;
+                        else errMsg = JSON.stringify(e);
+                      } catch (_) {}
+                      console.error('Failed to start/stop ad', e);
+                      // Surface the real error in the app UI since production builds don't show a console
+                      appendLog?.(errMsg);
+                      setSnackMessage(errMsg);
+                      setSnackOpen(true);
+                      // keep the alert for visibility in case Snackbar is missed
+                      alert(errMsg);
+                    }
                 }} sx={{ color: running ? '#60a5fa' : 'white' }} title={running ? 'Stop' : 'Start'}>
                   {running ? <StopIcon /> : <PlayArrowIcon />}
                 </IconButton>
@@ -318,6 +445,44 @@ export default function AdvertisementManager({
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         message={snackMessage ?? ''}
       />
+      <Dialog open={!!verificationOpenFor} onClose={handleVerificationCancel} fullWidth maxWidth="sm">
+        <DialogTitle>Roli verification required</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 1 }}>This ad needs a Roli verification cookie to post. Paste it below and press Save to try posting again.
+            Go to <a href="https://rolimons.com" target="_blank" rel="noopener noreferrer">rolimons.com</a>, open your browser's developer tools (usually F12/inspect element), and find the value of the <code>roli_verification</code> cookie.
+            <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+              <img
+                src="/images/cookie-1.png"
+                alt="Example roli_verification cookie (example 1)"
+                style={{ height: 64, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}
+              />
+              <img
+                src="/images/cookie-2.png"
+                alt="Example roli_verification cookie (example 2)"
+                style={{ height: 64, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}
+              />
+              <img
+                src="/images/cookie-3.png"
+                alt="Example roli_verification cookie (example 3)"
+                style={{ height: 64, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}
+              />
+            </Box>
+          </Typography>
+          <TextField
+            label="Roli verification cookie"
+            value={verificationInput}
+            onChange={(e) => setVerificationInput(e.target.value)}
+            fullWidth
+            multiline
+            minRows={2}
+            placeholder="Paste your roli_verification cookie here"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleVerificationCancel} disabled={verificationSubmitting}>Cancel</Button>
+          <Button onClick={handleVerificationSubmit} disabled={verificationSubmitting || !verificationInput} variant="contained">Save & Try</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
