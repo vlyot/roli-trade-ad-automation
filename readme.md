@@ -35,17 +35,6 @@ This project is an independent tool and is not affiliated with Roblox or the ori
 ## Requirements
 - **Windows 11**
 - **Chrome** with an already logged‑in Rolimons session (in the target profile)
-- **Rust** (stable) and Cargo
-
-
----
-
-
-## Install / Build
-```bash
-# from project root
-cargo build --release
-```
 
 --- 
 
