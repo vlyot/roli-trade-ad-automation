@@ -25,6 +25,10 @@ dist
 dist-ssr
 *.local
 
+# Ignore packaged release artifacts and temporary unpack folder
+/release
+/tmp_unpack
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
