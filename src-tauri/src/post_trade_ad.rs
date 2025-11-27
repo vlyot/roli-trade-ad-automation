@@ -64,7 +64,19 @@ pub async fn post_trade_ad_direct(
         Err(_) => format!("<non-UTF8 response: {} bytes>", bytes.len()),
     };
 
+    // Detect common verification-related failures so callers can act only on those.
+    let lower = text.to_lowercase();
+    let verification_related = matches!(status.as_u16(), 401 | 403)
+        || lower.contains("verification")
+        || lower.contains("roli_verification")
+        || lower.contains("invalid token")
+        || lower.contains("not authenticated");
+
     if !status.is_success() {
+        if verification_related {
+            // Special error marker so the runner/frontend can detect verification expiration
+            return Err(anyhow!("verification_required: {} - {}", status, text));
+        }
         return Err(anyhow!("Failed to post trade ad: {} - {}", status, text));
     }
 

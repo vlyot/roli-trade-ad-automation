@@ -51,6 +51,7 @@ export default function AdvertisementManager({
   const [verificationSubmitting, setVerificationSubmitting] = useState(false);
   const [countdowns, setCountdowns] = useState<Record<string, number>>({});
   const [authVerification, setAuthVerification] = useState<string | null>(null);
+  const [runningIds, setRunningIds] = useState<string[]>([]);
 
   // load global auth verification if present
   useEffect(() => {
@@ -77,7 +78,6 @@ export default function AdvertisementManager({
   useEffect(() => { refresh(); }, []);
   useEffect(() => { if (typeof refreshSignal !== 'undefined') refresh(); }, [refreshSignal]);
 
-  const [runningIds, setRunningIds] = useState<string[]>([]);
   const refreshRunning = async () => {
     try {
       const res = await invoke<any>('list_running_ads');
@@ -134,7 +134,7 @@ export default function AdvertisementManager({
   // Listen for ad posting events from the Rust runner and append formatted messages
   const appendRef = useRef<typeof appendLog | null>(null);
   useEffect(() => { appendRef.current = appendLog ?? null; }, [appendLog]);
-
+  
   useEffect(() => {
     // register the listener once; guard against the async listen resolving after cleanup
     let unlisten: any = null;
@@ -143,20 +143,21 @@ export default function AdvertisementManager({
       const payload = e.payload as any;
       const message = payload?.message ?? String(payload ?? '');
       const id = payload?.id;
-      if (message) appendRef.current?.(message);
-      // If runner skipped posting due to missing verification, prompt the user.
-      // Also stop the runner for this ad to avoid repeated skip events causing an infinite prompt loop.
+      const errorKind = payload?.error_kind as string | undefined;
+      const reason = payload?.reason as string | undefined;
+
+      // Always append the human-friendly message to the app log
+      if (message) appendRef.current?.(message + (reason ? ` — ${reason}` : ''));
+
+      // If runner skipped posting due to missing verification, prompt the user and stop the runner
       if (message === 'trade ad post skipped (no roli_verification)' && id) {
-        // avoid re-opening the dialog if it's already open for this ad
         if (verificationOpenFor !== id) {
-          // stop the runner for this ad to prevent repeated events
           (async () => {
             try {
               await invoke('stop_ad', { id });
             } catch (e) {
               // ignore stop errors
             }
-            // remove countdown and refresh running list
             setCountdowns((s) => { const n = { ...s }; delete n[id]; return n; });
             try { await refreshRunning(); } catch {}
           })();
@@ -165,27 +166,21 @@ export default function AdvertisementManager({
           setVerificationOpenFor(id);
         }
       }
-      // If a post failed and it's likely verification related, re-open dialog for correction
-      if (typeof message === 'string' && message.startsWith('trade ad post failed') && id) {
-        // Some failures are benign (e.g. ad creation cooldown). Ignore those and don't prompt for verification.
-        // Example message payload contains: {"success":false,"code":7105,"message":"Ad creation cooldown has not elapsed"}
-        const lower = message.toLowerCase();
-        if (lower.includes('"code":7105') || lower.includes('ad creation cooldown')) {
-          // just log the message and continue; don't stop the runner or open the verification dialog
-          // (the appendLog call above already wrote the message)
-        } else {
-          if (verificationOpenFor !== id) {
-            (async () => {
-              try { await invoke('stop_ad', { id }); } catch (e) {}
-              setCountdowns((s) => { const n = { ...s }; delete n[id]; return n; });
-              try { await refreshRunning(); } catch {}
-            })();
-            const ad = (ads || []).find((a) => a.id === id);
-            setVerificationInput((authVerification ?? (ad?.roli_verification as string) ?? ''));
-            setVerificationOpenFor(id);
-          }
+
+      // Only prompt for verification if the runner explicitly marked the error as verification-related
+      if (errorKind === 'verification' && id) {
+        if (verificationOpenFor !== id) {
+          (async () => {
+            try { await invoke('stop_ad', { id }); } catch (e) {}
+            setCountdowns((s) => { const n = { ...s }; delete n[id]; return n; });
+            try { await refreshRunning(); } catch {}
+          })();
+          const ad = (ads || []).find((a) => a.id === id);
+          setVerificationInput((authVerification ?? (ad?.roli_verification as string) ?? ''));
+          setVerificationOpenFor(id);
         }
       }
+      // For non-verification failures, do not prompt — logs above are sufficient for diagnosis.
     }).then((u) => {
       if (cancelled) {
         u();
@@ -198,8 +193,7 @@ export default function AdvertisementManager({
       cancelled = true;
       if (unlisten) unlisten();
     };
-  }, []);
-
+  }, [ads, authVerification, verificationOpenFor, appendLog]);
   // Tick countdowns every second for running ads
   useEffect(() => {
     const id = setInterval(() => {

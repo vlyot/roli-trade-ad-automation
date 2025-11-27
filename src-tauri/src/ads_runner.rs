@@ -93,9 +93,32 @@ pub fn start_ad(ad: crate::ads_storage::AdData, window: Window) -> Result<()> {
                         next_wait_mins = std::cmp::max(1, ad_clone.interval_minutes as u64);
                     }
                     Err(err) => {
-                        eprintln!("ads_runner: ad {} failed to post: {}", ad_clone.id, err);
-                        // also emit a failure event so UI can display it
-                        let _ = win.emit("ad:posted", serde_json::json!({ "id": ad_clone.id, "count": 0, "message": format!("trade ad post failed: {}", err) }));
+                        let err_str = err.to_string();
+                        eprintln!("ads_runner: ad {} failed to post: {}", ad_clone.id, err_str);
+                        // classify verification-related failures so UI only prompts when appropriate
+                        let is_verification = err_str.starts_with("verification_required")
+                            || err_str.to_lowercase().contains("verification");
+
+                        // Attempt to parse a JSON error payload to extract any API error code for richer events
+                        let mut error_code: Option<u64> = None;
+                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&err_str) {
+                            if let Some(code_val) = v.get("code") {
+                                if code_val.is_u64() {
+                                    error_code = code_val.as_u64();
+                                } else if code_val.is_i64() {
+                                    error_code = Some(code_val.as_i64().unwrap() as u64);
+                                }
+                            }
+                        }
+
+                        if is_verification {
+                            let _ = win.emit("ad:posted", serde_json::json!({ "id": ad_clone.id, "count": 0, "message": "trade ad post failed (verification_required)", "error_kind": "verification", "reason": err_str, "error_code": error_code }));
+                        } else {
+                            // Use a different message prefix for non-verification failures so older frontends
+                            // that look for messages starting with "trade ad post failed" don't treat these
+                            // as verification prompts. Include structured fields for diagnostics.
+                            let _ = win.emit("ad:posted", serde_json::json!({ "id": ad_clone.id, "count": 0, "message": format!("trade ad post error: {}", err_str), "error_kind": "other", "reason": err_str, "error_code": error_code }));
+                        }
                         // if immediate post fails, wait 20 minutes before retrying
                         next_wait_mins = 20;
                     }
