@@ -48,6 +48,7 @@ export default function AdvertisementManager({
   const [snackMessage, setSnackMessage] = useState<string | null>(null);
   const [verificationOpenFor, setVerificationOpenFor] = useState<string | null>(null);
   const [verificationInput, setVerificationInput] = useState<string>("");
+  const [verificationPromptSource, setVerificationPromptSource] = useState<'missing' | 'post-error' | null>(null);
   const [verificationSubmitting, setVerificationSubmitting] = useState(false);
   const [countdowns, setCountdowns] = useState<Record<string, number>>({});
   const [authVerification, setAuthVerification] = useState<string | null>(null);
@@ -93,6 +94,7 @@ export default function AdvertisementManager({
   const handleVerificationCancel = () => {
     setVerificationOpenFor(null);
     setVerificationInput("");
+    setVerificationPromptSource(null);
   };
 
   const handleVerificationSubmit = async () => {
@@ -111,14 +113,23 @@ export default function AdvertisementManager({
         // ignore if global save fails; still try to save ad
       }
       await invoke('save_ad', { ad: updatedAd });
-      // restart the runner so it will attempt an immediate post
-      try { await invoke('stop_ad', { id }); } catch (_) {}
-      await invoke('start_ad', { id, interval_minutes: globalInterval });
-      setCountdowns((s) => ({ ...s, [id]: (globalInterval || 1) * 60 }));
-      appendLog?.(`Saved verification and restarted ad ${ad.name}`);
-      setVerificationOpenFor(null);
-      setVerificationInput("");
-      await refreshRunning();
+      if (verificationPromptSource === 'missing') {
+        // restart the runner so it will attempt an immediate post
+        try { await invoke('stop_ad', { id }); } catch (_) {}
+        await invoke('start_ad', { id, interval_minutes: globalInterval });
+        setCountdowns((s) => ({ ...s, [id]: (globalInterval || 1) * 60 }));
+        appendLog?.(`Saved verification and restarted ad ${ad.name}`);
+        setVerificationOpenFor(null);
+        setVerificationInput("");
+        setVerificationPromptSource(null);
+        await refreshRunning();
+      } else {
+        // post-error case: just save the token so the runner can retry on its schedule
+        appendLog?.(`Saved verification for ad ${ad.name}; runner will retry on next schedule.`);
+        setVerificationOpenFor(null);
+        setVerificationInput("");
+        setVerificationPromptSource(null);
+      }
     } catch (e) {
       console.error('Failed to save verification and restart ad', e);
       let errMsg = 'Failed to save verification';
@@ -163,6 +174,7 @@ export default function AdvertisementManager({
           })();
           const ad = (ads || []).find((a) => a.id === id);
           setVerificationInput((authVerification ?? (ad?.roli_verification as string) ?? ''));
+          setVerificationPromptSource('missing');
           setVerificationOpenFor(id);
         }
       }
@@ -177,6 +189,22 @@ export default function AdvertisementManager({
           })();
           const ad = (ads || []).find((a) => a.id === id);
           setVerificationInput((authVerification ?? (ad?.roli_verification as string) ?? ''));
+          setVerificationPromptSource('missing');
+          setVerificationOpenFor(id);
+        }
+      }
+
+      // If a non-verification error occurred but the ad has no verification saved, offer a prompt
+      // so the user can enter a verification token and allow future retries. Do NOT stop the runner here;
+      // the runner should continue its retry schedule.
+      if (errorKind === 'other' && id) {
+        const ad = (ads || []).find((a) => a.id === id);
+        const adHasVerification = !!(ad?.roli_verification && String(ad?.roli_verification).trim());
+        if (!adHasVerification && verificationOpenFor !== id) {
+          // open a lightweight prompt explaining the post was blocked by a server-side constraint
+          // and offer a field to save the verification so the runner can resume attempts later.
+          setVerificationInput((authVerification ?? (ad?.roli_verification as string) ?? ''));
+          setVerificationPromptSource('post-error');
           setVerificationOpenFor(id);
         }
       }
@@ -448,28 +476,32 @@ export default function AdvertisementManager({
         message={snackMessage ?? ''}
       />
       <Dialog open={!!verificationOpenFor} onClose={handleVerificationCancel} fullWidth maxWidth="sm">
-        <DialogTitle>Roli verification required</DialogTitle>
+        <DialogTitle>{verificationPromptSource === 'post-error' ? 'Posting blocked — enter verification (optional)' : 'Roli verification required'}</DialogTitle>
         <DialogContent>
-          <Typography sx={{ mb: 1 }}>This ad needs a Roli verification cookie to post. Paste it below and press Save to try posting again.
-            Go to <a href="https://rolimons.com" target="_blank" rel="noopener noreferrer">rolimons.com</a>, open your browser's developer tools (usually F12/inspect element), and find the value of the <code>roli_verification</code> cookie.
-            <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-              <img
-                src="/images/cookie-1.png"
-                alt="Example roli_verification cookie (example 1)"
-                style={{ height: 64, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}
-              />
-              <img
-                src="/images/cookie-2.png"
-                alt="Example roli_verification cookie (example 2)"
-                style={{ height: 64, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}
-              />
-              <img
-                src="/images/cookie-3.png"
-                alt="Example roli_verification cookie (example 3)"
-                style={{ height: 64, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}
-              />
-            </Box>
-          </Typography>
+          {verificationPromptSource === 'post-error' ? (
+            <Typography sx={{ mb: 1 }}>A server-side error prevented this ad from posting (for example: 24-hour limit or cooldown). This ad currently has no saved <code>roli_verification</code> cookie — entering one now will allow the runner to retry posting on its next scheduled attempt. This will not restart or stop the runner immediately.</Typography>
+          ) : (
+            <Typography sx={{ mb: 1 }}>This ad needs a Roli verification cookie to post. Paste it below and press Save to try posting again.
+              Go to <a href="https://rolimons.com" target="_blank" rel="noopener noreferrer">rolimons.com</a>, open your browser's developer tools (usually F12/inspect element), and find the value of the <code>roli_verification</code> cookie.
+            </Typography>
+          )}
+          <Box sx={{ mt: 1, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <img
+              src="/images/cookie-1.png"
+              alt="Example roli_verification cookie (example 1)"
+              style={{ height: 64, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}
+            />
+            <img
+              src="/images/cookie-2.png"
+              alt="Example roli_verification cookie (example 2)"
+              style={{ height: 64, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}
+            />
+            <img
+              src="/images/cookie-3.png"
+              alt="Example roli_verification cookie (example 3)"
+              style={{ height: 64, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)' }}
+            />
+          </Box>
           <TextField
             label="Roli verification cookie"
             value={verificationInput}
@@ -482,7 +514,7 @@ export default function AdvertisementManager({
         </DialogContent>
         <DialogActions>
           <Button onClick={handleVerificationCancel} disabled={verificationSubmitting}>Cancel</Button>
-          <Button onClick={handleVerificationSubmit} disabled={verificationSubmitting || !verificationInput} variant="contained">Save & Try</Button>
+          <Button onClick={handleVerificationSubmit} disabled={verificationSubmitting || !verificationInput} variant="contained">{verificationPromptSource === 'post-error' ? 'Save' : 'Save & Try'}</Button>
         </DialogActions>
       </Dialog>
     </Box>
