@@ -57,70 +57,83 @@ pub fn start_ad(ad: crate::ads_storage::AdData, window: Window) -> Result<()> {
             // perform post now and choose next wait time based on success
             let next_wait_mins: u64;
             if let Some(roli) = ad_clone.roli_verification.clone() {
-                match crate::trade_ad::post_trade_ad_direct(
-                    &roli,
-                    ad_clone.player_id,
-                    ad_clone
-                        .offer_item_ids
-                        .clone()
-                        .into_iter()
-                        .map(|v| v as u64)
-                        .collect(),
-                    ad_clone
-                        .request_item_ids
-                        .clone()
-                        .into_iter()
-                        .map(|v| v as u64)
-                        .collect(),
-                    ad_clone.request_tags.clone(),
-                )
-                .await
-                {
-                    Ok(_msg) => {
-                        // increment count and emit an event to the frontend with the count
-                        let mut pc = POST_COUNTS.lock().unwrap();
-                        let entry = pc.entry(ad_clone.id.clone()).or_insert(0);
-                        *entry += 1;
-                        let cnt = *entry;
-                        // build a clean message as requested by UI (lowercase, short)
-                        let user_msg = if cnt <= 1 {
-                            "trade ad post success".to_string()
-                        } else {
-                            format!("trade ad post success ({})", cnt)
-                        };
-                        let _ = win.emit("ad:posted", serde_json::json!({ "id": ad_clone.id, "count": cnt, "message": user_msg }));
-                        // normal interval
-                        next_wait_mins = std::cmp::max(1, ad_clone.interval_minutes as u64);
-                    }
-                    Err(err) => {
-                        let err_str = err.to_string();
-                        eprintln!("ads_runner: ad {} failed to post: {}", ad_clone.id, err_str);
-                        // classify verification-related failures so UI only prompts when appropriate
-                        let is_verification = err_str.starts_with("verification_required")
-                            || err_str.to_lowercase().contains("verification");
+                if roli.trim().is_empty() {
+                    eprintln!(
+                        "ads_runner: ad {} has empty roli_verification, skipping post",
+                        ad_clone.id
+                    );
+                    let _ = win.emit("ad:posted", serde_json::json!({ "id": ad_clone.id, "count": 0, "message": "trade ad post skipped (no roli_verification)" }));
+                    next_wait_mins = 20;
+                } else {
+                    match crate::trade_ad::post_trade_ad_direct(
+                        &roli,
+                        ad_clone.player_id,
+                        ad_clone
+                            .offer_item_ids
+                            .clone()
+                            .into_iter()
+                            .map(|v| v as u64)
+                            .collect(),
+                        ad_clone
+                            .request_item_ids
+                            .clone()
+                            .into_iter()
+                            .map(|v| v as u64)
+                            .collect(),
+                        ad_clone.request_tags.clone(),
+                    )
+                    .await
+                    {
+                        Ok(_msg) => {
+                            // increment count and emit an event to the frontend with the count
+                            let mut pc = POST_COUNTS.lock().unwrap();
+                            let entry = pc.entry(ad_clone.id.clone()).or_insert(0);
+                            *entry += 1;
+                            let cnt = *entry;
+                            // build a clean message as requested by UI (lowercase, short)
+                            let user_msg = if cnt <= 1 {
+                                "trade ad post success".to_string()
+                            } else {
+                                format!("trade ad post success ({})", cnt)
+                            };
+                            let _ = win.emit("ad:posted", serde_json::json!({ "id": ad_clone.id, "count": cnt, "message": user_msg }));
+                            // Use stored interval if non-zero (and >= 15), otherwise default to 15 minutes minimum
+                            next_wait_mins = if ad_clone.interval_minutes >= 15 {
+                                ad_clone.interval_minutes as u64
+                            } else {
+                                15
+                            };
+                        }
+                        Err(err) => {
+                            let err_str = err.to_string();
+                            eprintln!("ads_runner: ad {} failed to post: {}", ad_clone.id, err_str);
+                            // classify verification-related failures so UI only prompts when appropriate
+                            let is_verification = err_str.starts_with("verification_required")
+                                || err_str.to_lowercase().contains("verification");
 
-                        // Attempt to parse a JSON error payload to extract any API error code for richer events
-                        let mut error_code: Option<u64> = None;
-                        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&err_str) {
-                            if let Some(code_val) = v.get("code") {
-                                if code_val.is_u64() {
-                                    error_code = code_val.as_u64();
-                                } else if code_val.is_i64() {
-                                    error_code = Some(code_val.as_i64().unwrap() as u64);
+                            // Attempt to parse a JSON error payload to extract any API error code for richer events
+                            let mut error_code: Option<u64> = None;
+                            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&err_str) {
+                                if let Some(code_val) = v.get("code") {
+                                    if code_val.is_u64() {
+                                        error_code = code_val.as_u64();
+                                    } else if code_val.is_i64() {
+                                        error_code = Some(code_val.as_i64().unwrap() as u64);
+                                    }
                                 }
                             }
-                        }
 
-                        if is_verification {
-                            let _ = win.emit("ad:posted", serde_json::json!({ "id": ad_clone.id, "count": 0, "message": "trade ad post failed (verification_required)", "error_kind": "verification", "reason": err_str, "error_code": error_code }));
-                        } else {
-                            // Use a different message prefix for non-verification failures so older frontends
-                            // that look for messages starting with "trade ad post failed" don't treat these
-                            // as verification prompts. Include structured fields for diagnostics.
-                            let _ = win.emit("ad:posted", serde_json::json!({ "id": ad_clone.id, "count": 0, "message": format!("trade ad post error: {}", err_str), "error_kind": "other", "reason": err_str, "error_code": error_code }));
+                            if is_verification {
+                                let _ = win.emit("ad:posted", serde_json::json!({ "id": ad_clone.id, "count": 0, "message": "trade ad post failed (verification_required)", "error_kind": "verification", "reason": err_str, "error_code": error_code }));
+                            } else {
+                                // Use a different message prefix for non-verification failures so older frontends
+                                // that look for messages starting with "trade ad post failed" don't treat these
+                                // as verification prompts. Include structured fields for diagnostics.
+                                let _ = win.emit("ad:posted", serde_json::json!({ "id": ad_clone.id, "count": 0, "message": format!("trade ad post error: {}", err_str), "error_kind": "other", "reason": err_str, "error_code": error_code }));
+                            }
+                            // if immediate post fails, wait 20 minutes before retrying
+                            next_wait_mins = 20;
                         }
-                        // if immediate post fails, wait 20 minutes before retrying
-                        next_wait_mins = 20;
                     }
                 }
             } else {

@@ -395,27 +395,32 @@ export default function AdvertisementManager({
                         return;
                       }
                       // If this ad lacks a roli_verification, prompt the user unless a global one exists.
-                      try {
-                        const hasAdVerification = !!(a.roli_verification && String(a.roli_verification).trim());
-                        if (!hasAdVerification) {
-                          if (authVerification) {
-                            // copy global verification into the ad so it can start without a prompt
-                            const updatedAd = { ...a, roli_verification: authVerification } as any;
-                            try {
-                              await invoke('save_ad', { ad: updatedAd });
-                              setAds((prev) => prev.map((x) => x.id === a.id ? updatedAd : x));
-                              appendLog?.(`Copied global verification to ad ${a.name}`);
-                            } catch (saveErr) {
-                              console.warn('Failed to persist copied verification to ad', saveErr);
-                            }
-                          } else {
-                            // No per-ad verification and no global token — open verification dialog instead of starting
-                            setVerificationInput("");
-                            setVerificationOpenFor(a.id);
+                      const hasAdVerification = !!(a.roli_verification && String(a.roli_verification).trim());
+                      if (!hasAdVerification) {
+                        if (authVerification && authVerification.trim()) {
+                          // copy global verification into the ad so it can start without a prompt
+                          const updatedAd = { ...a, roli_verification: authVerification } as any;
+                          try {
+                            await invoke('save_ad', { ad: updatedAd });
+                            setAds((prev) => prev.map((x) => x.id === a.id ? updatedAd : x));
+                            appendLog?.(`Copied global verification to ad ${a.name}`);
+                          } catch (saveErr) {
+                            // If save fails, don't proceed — show error and bail
+                            const errMsg = `Failed to save verification to ad: ${String(saveErr)}`;
+                            console.error(errMsg, saveErr);
+                            appendLog?.(errMsg);
+                            setSnackMessage(errMsg);
+                            setSnackOpen(true);
                             return;
                           }
+                        } else {
+                          // No per-ad verification and no global token — open verification dialog instead of starting
+                          setVerificationInput("");
+                          setVerificationPromptSource('missing');
+                          setVerificationOpenFor(a.id);
+                          return;
                         }
-                      } catch (_) {}
+                      }
                       await invoke('start_ad', { id: a.id, interval_minutes: globalInterval });
                       setCountdowns((s) => ({ ...s, [a.id]: globalInterval * 60 }));
                       appendLog?.(`Started ad ${a.name} (every ${globalInterval}m)`);
