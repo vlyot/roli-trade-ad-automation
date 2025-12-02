@@ -19,13 +19,17 @@ pub async fn fetch_avatar_thumbnails(
         chunk.join(",")
     );
 
+    let start = std::time::Instant::now();
     eprintln!(
         "avatar_thumbnails: fetching for ids={} url={}",
         chunk.join(","),
         url
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
     let resp = client
         .get(&url)
         .header(USER_AGENT, "rolimons-avatar-fetcher/1.0")
@@ -48,5 +52,6 @@ pub async fn fetch_avatar_thumbnails(
         }
     }
 
+    eprintln!("avatar_thumbnails: fetched {} thumbnails in {:?}", map.len(), start.elapsed());
     Ok(map)
 }

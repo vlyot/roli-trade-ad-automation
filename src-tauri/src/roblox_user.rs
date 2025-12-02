@@ -83,7 +83,9 @@ pub async fn search_users(keyword: &str, limit: Option<u32>) -> Result<UserSearc
         limit
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
 
     // Retry loop with exponential backoff and jitter to handle 429 rate limits.
     let mut attempt: u32 = 0;
@@ -165,7 +167,9 @@ pub async fn search_users(keyword: &str, limit: Option<u32>) -> Result<UserSearc
 pub async fn get_user_details(user_id: u64) -> Result<UserDetails> {
     let url = format!("https://users.roblox.com/v1/users/{}", user_id);
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
     let resp = client
         .get(&url)
         .header(USER_AGENT, "roblox-user-details/1.0")

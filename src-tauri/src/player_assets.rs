@@ -11,12 +11,17 @@ static PLAYER_ASSETS_CACHE: Lazy<Mutex<HashMap<u64, (Value, u64)>>> =
 const PLAYER_ASSETS_TTL_SECS: u64 = 30; // 30 seconds TTL
 
 async fn fetch_player_assets_raw(player_id: u64) -> Result<Value, String> {
+    let start = std::time::Instant::now();
+    eprintln!("fetch_player_assets_raw: starting for player {}", player_id);
     let url = format!(
         "https://api.rolimons.com/players/v1/playerassets/{}",
         player_id
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
     let resp = client
         .get(&url)
         .header(USER_AGENT, "rolimons-player-assets-fetcher/1.0")
@@ -32,6 +37,7 @@ async fn fetch_player_assets_raw(player_id: u64) -> Result<Value, String> {
     }
 
     let json: Value = resp.json().await.map_err(|e| e.to_string())?;
+    eprintln!("fetch_player_assets_raw: completed for player {} in {:?}", player_id, start.elapsed());
     Ok(json)
 }
 

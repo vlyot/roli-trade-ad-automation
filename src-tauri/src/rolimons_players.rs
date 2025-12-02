@@ -19,7 +19,10 @@ pub async fn search_players_with_thumbnails(
         encoded
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
     let resp = client
         .get(&url)
         .header(USER_AGENT, "rolimons-players-search/1.0")

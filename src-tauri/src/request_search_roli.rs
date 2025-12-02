@@ -23,9 +23,13 @@ pub async fn fetch_item_details(
     per_page: usize,
     search: Option<String>,
 ) -> Result<(Vec<ItemInfo>, usize)> {
+    let fetch_start = std::time::Instant::now();
+    eprintln!("fetch_item_details: starting (page={}, per_page={}, search={:?})", page, per_page, search);
     // The public Rolimons item details endpoint
     let url = "https://www.rolimons.com/itemapi/itemdetails";
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
 
     let resp = client
         .get(url)
@@ -134,11 +138,14 @@ pub async fn fetch_item_details(
         page_slice
     };
 
+    eprintln!("fetch_item_details: returning {} items (total={}) in {:?}", page_items.len(), total, fetch_start.elapsed());
     Ok((page_items, total))
 }
 
 /// Fetch a small list of items by their catalog IDs. Returns the ItemInfo list (no paging).
 pub async fn fetch_items_by_ids(ids: Vec<u64>) -> Result<Vec<ItemInfo>> {
+    let start = std::time::Instant::now();
+    eprintln!("fetch_items_by_ids: starting for {} ids", ids.len());
     // Short-circuit empty
     if ids.is_empty() {
         return Ok(Vec::new());
@@ -146,7 +153,9 @@ pub async fn fetch_items_by_ids(ids: Vec<u64>) -> Result<Vec<ItemInfo>> {
 
     // Fetch the Rolimons itemdetails JSON once and pick only requested ids
     let url = "https://www.rolimons.com/itemapi/itemdetails";
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
 
     let resp = client
         .get(url)
@@ -218,5 +227,6 @@ pub async fn fetch_items_by_ids(ids: Vec<u64>) -> Result<Vec<ItemInfo>> {
         }
     }
 
+    eprintln!("fetch_items_by_ids: returning {} items in {:?}", out.len(), start.elapsed());
     Ok(out)
 }

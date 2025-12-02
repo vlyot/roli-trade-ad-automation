@@ -14,7 +14,9 @@ pub async fn post_trade_ad_direct(
     request_item_ids: Vec<u64>,
     request_tags: Vec<String>,
 ) -> Result<String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
 
     // Map request_tags to lowercase strings
     let mapped_tags: Vec<String> = request_tags.iter().map(|tag| tag.to_lowercase()).collect();

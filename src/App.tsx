@@ -16,6 +16,14 @@ import TerminalLogs from "./components/TerminalLogs";
 import AdvertisementManager from "./components/AdvertisementManager";
 // InventoryPicker removed: inventory will load automatically and be enriched from catalog data
 
+// Helper: wrap Tauri invoke with timeout to prevent indefinite waiting
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operation: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${operation} timed out after ${timeoutMs}ms`)), timeoutMs))
+  ]);
+}
+
 interface TradeAdRequest {
   player_id: number;
   offer_item_ids: number[];
@@ -51,14 +59,18 @@ function MainApp() {
       if (authData.roli_verification) {
         setRoliVerification(authData.roli_verification);
       }
-      // fetch avatar thumbnail for header
+      // fetch avatar thumbnail for header (use lazy thumbnail endpoint)
       (async () => {
         try {
-          const map: Record<string, string> = await invoke('fetch_avatar_thumbnails', { userIds: [Number(authData.user_id)], user_ids: [Number(authData.user_id)] });
+          const map: Record<string, string> = await withTimeout(
+            invoke('fetch_thumbnails_for_ids_cmd', { ids: [Number(authData.user_id)] }),
+            5000,
+            'Fetch avatar thumbnail'
+          );
           const url = map?.[String(authData.user_id)];
           if (url) setAvatarUrl(url);
         } catch (e) {
-          // ignore
+          // ignore avatar fetch failures
         }
       })();
     }
@@ -162,7 +174,11 @@ function MainApp() {
         }
 
   // Ask the backend for a cached full catalog for this search term
-  const resAll: any = await invoke("get_full_catalog", { search: searchValue || null });
+  const resAll: any = await withTimeout(
+    invoke("get_full_catalog", { search: searchValue || null }),
+    30000,
+    "Fetch catalog"
+  );
         if (!active) return;
         if (!resAll || !Array.isArray(resAll.items)) {
           setCatalogItems([]);
@@ -184,7 +200,11 @@ function MainApp() {
       } catch (err: any) {
         setCatalogItems([]);
         setCatalogTotal(0);
-        appendLog(`Failed to fetch catalog: ${err?.toString() ?? String(err)}`);
+        const msg = err?.message ?? err?.toString() ?? String(err);
+        appendLog(`Failed to fetch catalog: ${msg}`);
+        if (msg.includes('timed out')) {
+          appendLog('Request timed out. Check your network or try again.');
+        }
       }
     };
 
@@ -244,7 +264,11 @@ function MainApp() {
     appendLog(`Loading inventory for player ${pid}...`);
     try {
       // Use backend-enriched inventory which returns inventory items with catalog metadata merged
-      const res: any = await invoke("fetch_enriched_inventory", { playerId: pid });
+      const res: any = await withTimeout(
+        invoke("fetch_enriched_inventory", { playerId: pid }),
+        20000,
+        "Load inventory"
+      );
       const itemsArr: any[] = (res && Array.isArray(res.items)) ? res.items : [];
       if (itemsArr.length === 0) {
         appendLog("No inventory returned");
@@ -257,7 +281,11 @@ function MainApp() {
       setInventoryItems(mapped.filter((e: any) => e.id != null));
       appendLog(`Inventory loaded: ${mapped.length} items`);
     } catch (err: any) {
-      appendLog(`Failed to load inventory: ${String(err)}`);
+      const msg = err?.message ?? String(err);
+      appendLog(`Failed to load inventory: ${msg}`);
+      if (msg.includes('timed out')) {
+        appendLog('Inventory fetch timed out. Check network or try again.');
+      }
       setInventoryItems([]);
     } finally {
       setIsEnriching(false);
@@ -286,7 +314,11 @@ function MainApp() {
       if (catalogFullCache.current.has(key)) return;
       appendLog("Prefetching full catalog for app startup...");
       try {
-        const resAll: any = await invoke("get_full_catalog", { search: null });
+        const resAll: any = await withTimeout(
+          invoke("get_full_catalog", { search: null }),
+          30000,
+          "Prefetch catalog"
+        );
         if (!active) return;
         if (!resAll || !Array.isArray(resAll.items)) {
           appendLog("Prefetch: no items returned from catalog API");
@@ -301,7 +333,11 @@ function MainApp() {
         setCatalogTotal(allItems.length);
         appendLog(`Prefetch complete: ${allItems.length} catalog items loaded`);
       } catch (e: any) {
-        appendLog(`Prefetch failed: ${String(e)}`);
+        const msg = e?.message ?? String(e);
+        appendLog(`Prefetch failed: ${msg}`);
+        if (msg.includes('timed out')) {
+          appendLog('This may indicate a slow network or backend issue. Try refreshing.');
+        }
       }
     };
     prefetchCatalog();

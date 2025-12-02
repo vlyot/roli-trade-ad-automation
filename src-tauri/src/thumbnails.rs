@@ -5,6 +5,39 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
+/// Fetch thumbnails for specific item IDs only (lazy loading).
+/// This avoids fetching the entire thumbnail map when only a few thumbnails are needed.
+pub async fn fetch_thumbnails_for_ids_cmd(ids: Vec<u64>) -> Result<HashMap<String, String>, String> {
+    let start = Instant::now();
+    eprintln!("fetch_thumbnails_for_ids_cmd: fetching {} thumbnails", ids.len());
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // Build a client with timeout
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // For now, fetch the full map and filter to requested IDs.
+    // TODO: if Rolimons provides a batch endpoint, use that instead.
+    let full_map = fetch_thumbnails_map(&client)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut result = HashMap::new();
+    for id in ids {
+        let key = id.to_string();
+        if let Some(url) = full_map.get(&key) {
+            result.insert(key, url.clone());
+        }
+    }
+
+    eprintln!("fetch_thumbnails_for_ids_cmd: returning {} thumbnails in {:?}", result.len(), start.elapsed());
+    Ok(result)
+}
+
 /// Simple in-memory cache with TTL for thumbnails map.
 static THUMB_CACHE: Lazy<RwLock<(Instant, HashMap<String, String>)>> =
     Lazy::new(|| RwLock::new((Instant::now() - Duration::from_secs(3600), HashMap::new())));
@@ -28,6 +61,8 @@ pub async fn fetch_thumbnails_map(
         }
     }
 
+    let start = Instant::now();
+    eprintln!("thumbnails: cache miss, fetching full thumbnail map...");
     // fetch fresh
     let mut map: HashMap<String, String> = HashMap::new();
 
@@ -114,6 +149,7 @@ pub async fn fetch_thumbnails_map(
         );
     }
 
+    eprintln!("thumbnails: fetched and parsed {} thumbnails in {:?}", map.len(), start.elapsed());
     // update cache
     if let Ok(mut cache_guard) = THUMB_CACHE.write() {
         *cache_guard = (Instant::now(), map.clone());

@@ -7,6 +7,7 @@ mod avatar_thumbnails;
 mod player_assets;
 mod roblox_user;
 mod rolimons_players;
+mod thumbnails;
 mod trade_ad;
 mod verification;
 
@@ -359,9 +360,14 @@ fn save_global_verification(roli_verification: String) -> Result<(), String> {
 /// Tauri command: fetch the full catalog for a given search term (no caching)
 #[tauri::command]
 async fn get_full_catalog(search: Option<String>) -> Result<serde_json::Value, String> {
-    // Fetch via existing fetch_item_details with a very large page size and return fresh results.
-    match trade_ad::fetch_item_details(1usize, 10_000_000usize, search.clone()).await {
+    let start = std::time::Instant::now();
+    append_app_log(&format!("get_full_catalog: starting fetch for search={:?}", search));
+    // Cap the fetch to a reasonable upper bound to avoid parsing enormous JSON blobs.
+    // If you really need everything, implement paged/batched fetching instead.
+    const MAX_FULL_CATALOG: usize = 100_000;
+    match trade_ad::fetch_item_details(1usize, MAX_FULL_CATALOG, search.clone()).await {
         Ok((items, _total)) => {
+            append_app_log(&format!("get_full_catalog: fetched {} items in {:?}", items.len(), start.elapsed()));
             // convert ItemInfo -> JsonValue and filter rap > 0
             let mut filtered: Vec<serde_json::Value> = Vec::with_capacity(items.len());
             for it in items.into_iter() {
@@ -372,9 +378,13 @@ async fn get_full_catalog(search: Option<String>) -> Result<serde_json::Value, S
                 }
             }
             let t = filtered.len();
+            append_app_log(&format!("get_full_catalog: filtered to {} items, total duration {:?}", t, start.elapsed()));
             Ok(serde_json::json!({"items": filtered, "total": t}))
         }
-        Err(e) => Err(e.to_string()),
+        Err(e) => {
+            append_app_log(&format!("get_full_catalog: error after {:?}: {}", start.elapsed(), e));
+            Err(e.to_string())
+        }
     }
 }
 
@@ -384,14 +394,17 @@ async fn fetch_enriched_inventory(
     player_id: Option<u64>,
     playerId: Option<u64>,
 ) -> Result<serde_json::Value, String> {
+    let start = std::time::Instant::now();
     // Accept either `player_id` (snake_case) or `playerId` (camelCase) from the frontend.
     let pid = player_id
         .or(playerId)
         .ok_or_else(|| "player_id is required".to_string())?;
+    append_app_log(&format!("fetch_enriched_inventory: starting for player {}", pid));
     // call existing player assets inventory fetch
     let inv = crate::player_assets::fetch_player_inventory(pid)
         .await
         .map_err(|e| e.to_string())?;
+    append_app_log(&format!("fetch_enriched_inventory: fetched inventory in {:?}", start.elapsed()));
     let items_arr = inv
         .get("items")
         .and_then(|v| v.as_array())
@@ -489,7 +502,15 @@ async fn fetch_enriched_inventory(
         })
         .collect();
 
+    append_app_log(&format!("fetch_enriched_inventory: returning {} enriched items, total duration {:?}", enriched.len(), start.elapsed()));
     Ok(serde_json::json!({"items": enriched}))
+}
+
+/// Wrapper Tauri command to expose thumbnail fetching for specific IDs.
+/// The actual logic lives in `thumbnails::fetch_thumbnails_for_ids_cmd`.
+#[tauri::command]
+async fn fetch_thumbnails_for_ids_cmd(ids: Vec<u64>) -> Result<std::collections::HashMap<String, String>, String> {
+    thumbnails::fetch_thumbnails_for_ids_cmd(ids).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -526,6 +547,8 @@ pub fn run() {
             verify_user,
             // avatar thumbnails for user search
             avatar_thumbnails::fetch_avatar_thumbnails,
+            // lazy thumbnail fetching by IDs
+            fetch_thumbnails_for_ids_cmd,
             fetch_enriched_inventory,
             save_auth_data,
             load_auth_data,
