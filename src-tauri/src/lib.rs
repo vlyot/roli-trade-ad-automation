@@ -182,7 +182,17 @@ fn start_ad(
             "Interval must be at least 15 minutes or 0 to inherit global interval".to_string(),
         );
     }
-    match ads_runner::start_ad(ad, window) {
+    // If neither the stored ad interval nor the provided override are set,
+    // we cannot start the runner because the frontend's global interval is required.
+    if ad.interval_minutes == 0 && interval_minutes.is_none() {
+        let msg = format!(
+            "start_ad: no interval provided for ad {} (stored=0, no override)",
+            id
+        );
+        append_app_log(&msg);
+        return Err("No posting interval specified. Set a global interval in the Ads manager or provide an interval_minutes when starting the ad.".to_string());
+    }
+    match ads_runner::start_ad(ad, window, interval_minutes) {
         Ok(()) => Ok(()),
         Err(e) => {
             let msg = format!("start_ad: runner failed to start ad {}: {}", id, e);
@@ -361,13 +371,20 @@ fn save_global_verification(roli_verification: String) -> Result<(), String> {
 #[tauri::command]
 async fn get_full_catalog(search: Option<String>) -> Result<serde_json::Value, String> {
     let start = std::time::Instant::now();
-    append_app_log(&format!("get_full_catalog: starting fetch for search={:?}", search));
+    append_app_log(&format!(
+        "get_full_catalog: starting fetch for search={:?}",
+        search
+    ));
     // Cap the fetch to a reasonable upper bound to avoid parsing enormous JSON blobs.
     // If you really need everything, implement paged/batched fetching instead.
     const MAX_FULL_CATALOG: usize = 100_000;
     match trade_ad::fetch_item_details(1usize, MAX_FULL_CATALOG, search.clone()).await {
         Ok((items, _total)) => {
-            append_app_log(&format!("get_full_catalog: fetched {} items in {:?}", items.len(), start.elapsed()));
+            append_app_log(&format!(
+                "get_full_catalog: fetched {} items in {:?}",
+                items.len(),
+                start.elapsed()
+            ));
             // convert ItemInfo -> JsonValue and filter rap > 0
             let mut filtered: Vec<serde_json::Value> = Vec::with_capacity(items.len());
             for it in items.into_iter() {
@@ -378,11 +395,19 @@ async fn get_full_catalog(search: Option<String>) -> Result<serde_json::Value, S
                 }
             }
             let t = filtered.len();
-            append_app_log(&format!("get_full_catalog: filtered to {} items, total duration {:?}", t, start.elapsed()));
+            append_app_log(&format!(
+                "get_full_catalog: filtered to {} items, total duration {:?}",
+                t,
+                start.elapsed()
+            ));
             Ok(serde_json::json!({"items": filtered, "total": t}))
         }
         Err(e) => {
-            append_app_log(&format!("get_full_catalog: error after {:?}: {}", start.elapsed(), e));
+            append_app_log(&format!(
+                "get_full_catalog: error after {:?}: {}",
+                start.elapsed(),
+                e
+            ));
             Err(e.to_string())
         }
     }
@@ -399,12 +424,18 @@ async fn fetch_enriched_inventory(
     let pid = player_id
         .or(playerId)
         .ok_or_else(|| "player_id is required".to_string())?;
-    append_app_log(&format!("fetch_enriched_inventory: starting for player {}", pid));
+    append_app_log(&format!(
+        "fetch_enriched_inventory: starting for player {}",
+        pid
+    ));
     // call existing player assets inventory fetch
     let inv = crate::player_assets::fetch_player_inventory(pid)
         .await
         .map_err(|e| e.to_string())?;
-    append_app_log(&format!("fetch_enriched_inventory: fetched inventory in {:?}", start.elapsed()));
+    append_app_log(&format!(
+        "fetch_enriched_inventory: fetched inventory in {:?}",
+        start.elapsed()
+    ));
     let items_arr = inv
         .get("items")
         .and_then(|v| v.as_array())
@@ -502,14 +533,20 @@ async fn fetch_enriched_inventory(
         })
         .collect();
 
-    append_app_log(&format!("fetch_enriched_inventory: returning {} enriched items, total duration {:?}", enriched.len(), start.elapsed()));
+    append_app_log(&format!(
+        "fetch_enriched_inventory: returning {} enriched items, total duration {:?}",
+        enriched.len(),
+        start.elapsed()
+    ));
     Ok(serde_json::json!({"items": enriched}))
 }
 
 /// Wrapper Tauri command to expose thumbnail fetching for specific IDs.
 /// The actual logic lives in `thumbnails::fetch_thumbnails_for_ids_cmd`.
 #[tauri::command]
-async fn fetch_thumbnails_for_ids_cmd(ids: Vec<u64>) -> Result<std::collections::HashMap<String, String>, String> {
+async fn fetch_thumbnails_for_ids_cmd(
+    ids: Vec<u64>,
+) -> Result<std::collections::HashMap<String, String>, String> {
     thumbnails::fetch_thumbnails_for_ids_cmd(ids).await
 }
 

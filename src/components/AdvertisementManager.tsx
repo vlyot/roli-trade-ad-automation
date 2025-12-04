@@ -7,6 +7,7 @@ import { Box, IconButton, Typography, Avatar, Snackbar, Dialog, DialogTitle, Dia
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import StopIcon from '@mui/icons-material/Stop';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SaveIcon from '@mui/icons-material/Save';
 import { invoke } from '@tauri-apps/api/core';
 
 export type Advertisement = {
@@ -116,8 +117,8 @@ export default function AdvertisementManager({
       if (verificationPromptSource === 'missing') {
         // restart the runner so it will attempt an immediate post
         try { await invoke('stop_ad', { id }); } catch (_) {}
-        await invoke('start_ad', { id, interval_minutes: globalInterval });
-        setCountdowns((s) => ({ ...s, [id]: (globalInterval || 1) * 60 }));
+        await invoke('start_ad', { id, interval_minutes: Number.isFinite(globalInterval) ? globalInterval : undefined });
+        setCountdowns((s) => ({ ...s, [id]: (Number.isFinite(globalInterval) ? globalInterval : 1) * 60 }));
         appendLog?.(`Saved verification and restarted ad ${ad.name}`);
         setVerificationOpenFor(null);
         setVerificationInput("");
@@ -156,9 +157,15 @@ export default function AdvertisementManager({
       const id = payload?.id;
       const errorKind = payload?.error_kind as string | undefined;
       const reason = payload?.reason as string | undefined;
+      const nextWaitMins = payload?.next_wait_mins as number | undefined;
 
       // Always append the human-friendly message to the app log
       if (message) appendRef.current?.(message + (reason ? ` — ${reason}` : ''));
+
+      // Update countdown with actual interval from backend
+      if (id && nextWaitMins != null) {
+        setCountdowns((s) => ({ ...s, [id]: nextWaitMins * 60 }));
+      }
 
       // If runner skipped posting due to missing verification, prompt the user and stop the runner
       if (message === 'trade ad post skipped (no roli_verification)' && id) {
@@ -240,10 +247,11 @@ export default function AdvertisementManager({
             changed = true;
           }
           if (n === 0) {
-            // fire post-notification and reset countdown
+            // fire post-notification
             const ad = ads.find((x) => x.id === adId);
             if (ad) appendLog?.(`Posting ad ${ad.name}`);
-            next[adId] = (globalInterval || 1) * 60;
+            // Don't reset here - wait for backend event with actual next_wait_mins
+            // This prevents showing incorrect countdown when backend uses different interval
           }
         }
         return changed ? next : prev;
@@ -306,6 +314,34 @@ export default function AdvertisementManager({
     }
   };
 
+  const handleSaveGlobalInterval = async () => {
+    try {
+      // Validate interval
+      if (globalInterval < 15) {
+        setSnackMessage('Interval must be at least 15 minutes');
+        setSnackOpen(true);
+        return;
+      }
+
+      // Update all ads with the new global interval
+      for (const ad of ads) {
+        const updatedAd = { ...ad, interval_minutes: globalInterval };
+        await invoke('save_ad', { ad: updatedAd });
+      }
+
+      await refresh();
+      setSnackMessage('Global interval saved for all ads');
+      setSnackOpen(true);
+      appendLog?.(`Updated global interval to ${globalInterval}m for all ads`);
+    } catch (e) {
+      console.error('Failed to save global interval', e);
+      let errMsg = 'Failed to save global interval';
+      try { if ((e as any)?.message) errMsg = (e as any).message; else errMsg = String(e); } catch {};
+      setSnackMessage(errMsg);
+      setSnackOpen(true);
+    }
+  };
+
   if (!ads || ads.length === 0) {
     return (
       <Box sx={{ mb: 1, p: 1 }}>
@@ -335,6 +371,14 @@ export default function AdvertisementManager({
                 setGlobalInterval(v);
                 try { localStorage.setItem('ads:globalInterval', String(v)); } catch {}
               }} style={{ width: 64, padding: 6, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: 'white' }} />
+              <IconButton
+                size="small"
+                onClick={handleSaveGlobalInterval}
+                sx={{ color: 'white', padding: '6px' }}
+                title="Save interval for all ads"
+              >
+                <SaveIcon sx={{ fontSize: '1.2rem' }} />
+              </IconButton>
             </Box>
             {intervalWarning && <Typography sx={{ color: '#f59e0b', fontSize: '0.75rem' }}>Minimum interval is 15 minutes</Typography>}
           </Box>
@@ -343,7 +387,6 @@ export default function AdvertisementManager({
         const running = runningIds.includes(a.id);
   // use offer-only thumbnails for the compact ad avatar stack
   const thumbs = (offerThumbsMap[a.id] ?? []) as string[];
-        const interval = a.interval_minutes ?? a.intervalMinutes ?? 16;
 
         return (
           <Box key={a.id} sx={{ position: 'relative' }} onMouseEnter={() => setHoverAdId(a.id)} onMouseLeave={() => setHoverAdId(null)}>
@@ -375,7 +418,6 @@ export default function AdvertisementManager({
 
               <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                 <Typography sx={{ color: 'white', fontWeight: 600, fontSize: '0.85rem' }}>{a.name}</Typography>
-                {!globalInterval && <Typography sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.75rem' }}>{interval}m</Typography>}
               </Box>
 
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -386,9 +428,9 @@ export default function AdvertisementManager({
                       setCountdowns((s) => { const n = { ...s }; delete n[a.id]; return n; });
                       appendLog?.(`Stopped ad ${a.name}`);
                     } else {
-                      // client-side guard: ensure globalInterval meets minimum
-                      if ((globalInterval ?? 0) < 15) {
-                        const msg = 'Interval must be at least 15 minutes';
+                      // Use the global interval for all ads
+                      if (!Number.isFinite(globalInterval) || globalInterval < 15) {
+                        const msg = 'No posting interval specified. Set a global interval in the Ads manager or provide an interval_minutes when starting the ad.';
                         appendLog?.(msg);
                         setSnackMessage(msg);
                         setSnackOpen(true);

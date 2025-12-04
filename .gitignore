@@ -40,3 +40,4 @@ dist-ssr
 *.sln
 *.sw?
 .github/copilot-instructions.md
+CLAUDE.md
