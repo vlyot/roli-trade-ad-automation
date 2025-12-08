@@ -18,7 +18,8 @@ This project is an independent tool and is not affiliated with Roblox or the ori
 1. user verifies roblox account through about
 2. user posts trade ad
 
-
+### optional functionality
+1. toggle desktop notifications to notify when your the value of your items change (up to 20 min delay)
 ---
 
 

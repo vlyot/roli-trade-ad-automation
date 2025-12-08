@@ -1,7 +1,7 @@
 ﻿import { useState, useEffect, ChangeEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Box, Button, Card, CardContent, Typography, Chip, ThemeProvider, createTheme, CssBaseline, IconButton, CircularProgress, Avatar, TextField, Dialog, DialogTitle, DialogContent, DialogActions } from "@mui/material";
-import { Logout as LogoutIcon } from "@mui/icons-material";
+import { Box, Button, Card, CardContent, Typography, Chip, ThemeProvider, createTheme, CssBaseline, IconButton, CircularProgress, Avatar, TextField, Dialog, DialogTitle, DialogContent, DialogActions, Switch, FormControlLabel } from "@mui/material";
+import { Logout as LogoutIcon, Settings as SettingsIcon } from "@mui/icons-material";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { markdownToHtml } from "./utils/markdown";
 import LoginFlow from "./components/LoginFlow";
@@ -87,6 +87,8 @@ function MainApp() {
   const [showHowTo, setShowHowTo] = useState(false);
   const [howToContent, setHowToContent] = useState<string>("");
   const [showVerificationPrompt, setShowVerificationPrompt] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [selectorMode, setSelectorMode] = useState<"offer" | "request">("offer");
   const [searchValue, setSearchValue] = useState("");
 
@@ -265,7 +267,7 @@ function MainApp() {
     try {
       // Use backend-enriched inventory which returns inventory items with catalog metadata merged
       const res: any = await withTimeout(
-        invoke("fetch_enriched_inventory", { playerId: pid }),
+        invoke("fetch_enriched_inventory", { playerId: pid, userId: authData?.user_id ? String(authData.user_id) : undefined }),
         20000,
         "Load inventory"
       );
@@ -296,6 +298,19 @@ function MainApp() {
     if (!playerId) return;
     loadInventory(Number(playerId));
   }, [playerId]);
+
+  // Load notification settings on login
+  useEffect(() => {
+    if (!authData?.user_id) return;
+    (async () => {
+      try {
+        const enabled: boolean = await invoke("get_notification_enabled", { userId: String(authData.user_id) });
+        setNotificationsEnabled(enabled);
+      } catch (e) {
+        console.error("Failed to load notification settings:", e);
+      }
+    })();
+  }, [authData?.user_id]);
 
   // Periodic refresh (TTL) — refresh inventory every 20 minutes while logged in
   useEffect(() => {
@@ -491,6 +506,9 @@ function MainApp() {
                       setHowToContent('Could not load guide.');
                     }
                   }} sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.12)' }}>How to use</Button>
+                  <IconButton onClick={() => setShowSettings(true)} size="small" sx={{ color: "white" }} title="Settings">
+                    <SettingsIcon />
+                  </IconButton>
                   <IconButton onClick={authLogout} size="small" sx={{ color: "white" }} title="Logout">
                     <LogoutIcon />
                   </IconButton>
@@ -517,6 +535,40 @@ function MainApp() {
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setShowHowTo(false)} sx={{ color: 'white' }}>Return to app</Button>
+              </DialogActions>
+            </Dialog>
+
+            {/* Settings dialog */}
+            <Dialog open={showSettings} onClose={() => setShowSettings(false)} maxWidth="sm" fullWidth>
+              <DialogTitle>Settings</DialogTitle>
+              <DialogContent dividers sx={{ bgcolor: 'transparent' }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={notificationsEnabled}
+                      onChange={async (e) => {
+                        const newValue = e.target.checked;
+                        setNotificationsEnabled(newValue);
+                        try {
+                          await invoke("set_notification_enabled", { userId: String(authData?.user_id), enabled: newValue });
+                          appendLog(`Value change notifications ${newValue ? 'enabled' : 'disabled'}`);
+                        } catch (err) {
+                          console.error("Failed to save notification setting:", err);
+                          appendLog(`Failed to save notification setting: ${err}`);
+                        }
+                      }}
+                      sx={{ color: 'white' }}
+                    />
+                  }
+                  label="Enable value change notifications"
+                  sx={{ color: 'white' }}
+                />
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mt: 1, fontSize: '0.85rem' }}>
+                  Get desktop notifications when items in your inventory change value (checked every 20 minutes during inventory refresh).
+                </Typography>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setShowSettings(false)} sx={{ color: 'white' }}>Close</Button>
               </DialogActions>
             </Dialog>
 

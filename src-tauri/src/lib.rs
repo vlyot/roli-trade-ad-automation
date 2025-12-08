@@ -4,11 +4,13 @@ mod ads_runner;
 mod ads_storage;
 mod auth_storage;
 mod avatar_thumbnails;
+mod notification_settings;
 mod player_assets;
 mod roblox_user;
 mod rolimons_players;
 mod thumbnails;
 mod trade_ad;
+mod value_change_detector;
 mod verification;
 
 use chrono::Local;
@@ -416,8 +418,10 @@ async fn get_full_catalog(search: Option<String>) -> Result<serde_json::Value, S
 /// Tauri command: fetch a player's inventory and enrich with catalog metadata
 #[tauri::command]
 async fn fetch_enriched_inventory(
+    app: tauri::AppHandle,
     player_id: Option<u64>,
     playerId: Option<u64>,
+    user_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let start = std::time::Instant::now();
     // Accept either `player_id` (snake_case) or `playerId` (camelCase) from the frontend.
@@ -533,6 +537,55 @@ async fn fetch_enriched_inventory(
         })
         .collect();
 
+    // Check for value changes and send notifications if enabled
+    if let Some(uid) = user_id {
+        match notification_settings::get_notification_enabled(&uid) {
+            Ok(true) => {
+                let changes = value_change_detector::detect_value_changes(&enriched);
+                for change in changes {
+                    let body = format!(
+                        "Item: {}\nOld Value: {}\nNew Value: {}",
+                        change.name, change.old_value, change.new_value
+                    );
+
+                    match tauri_plugin_notification::NotificationExt::notification(&app)
+                        .builder()
+                        .title("Item Value Changed")
+                        .body(&body)
+                        .show()
+                    {
+                        Ok(_) => {
+                            if let Some(thumbnail_url) = &change.thumbnail {
+                                append_app_log(&format!(
+                                    "Value change notification sent for {} (thumbnail: {})",
+                                    change.name, thumbnail_url
+                                ));
+                            } else {
+                                append_app_log(&format!(
+                                    "Value change notification sent for {} (no thumbnail)",
+                                    change.name
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            append_app_log(&format!(
+                                "Failed to send notification for {}: {}",
+                                change.name, e
+                            ));
+                        }
+                    }
+                }
+            }
+            Ok(false) => {
+                // Notifications disabled, still update cache but don't notify
+                let _ = value_change_detector::detect_value_changes(&enriched);
+            }
+            Err(e) => {
+                append_app_log(&format!("Failed to check notification settings: {}", e));
+            }
+        }
+    }
+
     append_app_log(&format!(
         "fetch_enriched_inventory: returning {} enriched items, total duration {:?}",
         enriched.len(),
@@ -550,9 +603,22 @@ async fn fetch_thumbnails_for_ids_cmd(
     thumbnails::fetch_thumbnails_for_ids_cmd(ids).await
 }
 
+/// Get notification enabled status for user
+#[tauri::command]
+fn get_notification_enabled(user_id: String) -> Result<bool, String> {
+    notification_settings::get_notification_enabled(&user_id)
+}
+
+/// Set notification enabled status for user
+#[tauri::command]
+fn set_notification_enabled(user_id: String, enabled: bool) -> Result<(), String> {
+    notification_settings::set_notification_enabled(&user_id, enabled)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             post_trade_ad,
@@ -591,7 +657,10 @@ pub fn run() {
             load_auth_data,
             save_global_verification,
             update_roli_verification,
-            logout
+            logout,
+            // notification settings
+            get_notification_enabled,
+            set_notification_enabled
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
