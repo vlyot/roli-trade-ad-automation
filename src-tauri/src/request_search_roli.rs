@@ -25,8 +25,8 @@ pub async fn fetch_item_details(
 ) -> Result<(Vec<ItemInfo>, usize)> {
     let fetch_start = std::time::Instant::now();
     eprintln!("fetch_item_details: starting (page={}, per_page={}, search={:?})", page, per_page, search);
-    // The public Rolimons item details endpoint
-    let url = "https://www.rolimons.com/itemapi/itemdetails";
+    // The public Rolimons item details endpoint (v2)
+    let url = "https://api.rolimons.com/items/v2/itemdetails";
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()?;
@@ -151,8 +151,8 @@ pub async fn fetch_items_by_ids(ids: Vec<u64>) -> Result<Vec<ItemInfo>> {
         return Ok(Vec::new());
     }
 
-    // Fetch the Rolimons itemdetails JSON once and pick only requested ids
-    let url = "https://www.rolimons.com/itemapi/itemdetails";
+    // Fetch the Rolimons itemdetails JSON once and pick only requested ids (v2)
+    let url = "https://api.rolimons.com/items/v2/itemdetails";
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()?;
@@ -229,4 +229,67 @@ pub async fn fetch_items_by_ids(ids: Vec<u64>) -> Result<Vec<ItemInfo>> {
 
     eprintln!("fetch_items_by_ids: returning {} items in {:?}", out.len(), start.elapsed());
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_item_info_creation() {
+        let item = ItemInfo {
+            id: 1028606,
+            name: "Red Baseball Cap".to_string(),
+            abbreviation: Some("RBC".to_string()),
+            rap: 1441,
+            value: 1441,
+            thumbnail: None,
+        };
+
+        assert_eq!(item.id, 1028606);
+        assert_eq!(item.name, "Red Baseball Cap");
+        assert_eq!(item.abbreviation, Some("RBC".to_string()));
+        assert_eq!(item.rap, 1441);
+        assert_eq!(item.value, 1441);
+        assert_eq!(item.thumbnail, None);
+    }
+
+    #[test]
+    fn test_item_info_no_abbreviation() {
+        let item = ItemInfo {
+            id: 1028720,
+            name: "Classic ROBLOX Viking Helm".to_string(),
+            abbreviation: None,
+            rap: 11045,
+            value: 11045,
+            thumbnail: None,
+        };
+
+        assert_eq!(item.abbreviation, None);
+        assert_eq!(item.rap, 11045);
+    }
+
+    #[test]
+    fn test_item_info_with_thumbnail() {
+        let thumbnail_url = "data:image/webp;base64,UklGRiYAAABXRUJQ".to_string();
+        let item = ItemInfo {
+            id: 1029025,
+            name: "The Classic ROBLOX Fedora".to_string(),
+            abbreviation: Some("CF".to_string()),
+            rap: 479116,
+            value: 470000,
+            thumbnail: Some(thumbnail_url.clone()),
+        };
+
+        assert_eq!(item.thumbnail, Some(thumbnail_url));
+        assert_eq!(item.rap, 479116);
+    }
+
+    #[tokio::test]
+    async fn test_fetch_items_by_ids_empty() {
+        let result = fetch_items_by_ids(vec![]).await;
+        assert!(result.is_ok());
+        let items = result.unwrap();
+        assert_eq!(items.len(), 0);
+    }
 }
