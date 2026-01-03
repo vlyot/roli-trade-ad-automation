@@ -395,8 +395,9 @@ function MainApp() {
         return null;
       }
       const response = await invoke<any>("post_trade_ad", { request });
-      // Save roli_verification on successful post (or if error is NOT about invalid token)
-      if (response && response.success && authData && request.roli_verification.trim() !== authData.roli_verification) {
+
+      // Save roli_verification on successful post if a valid token was provided
+      if (response && response.success && request.roli_verification.trim()) {
         try {
           await updateRoliVerification(request.roli_verification.trim());
           appendLog("Roli verification saved for future use");
@@ -404,19 +405,24 @@ function MainApp() {
           appendLog(`Warning: Could not save roli_verification: ${e}`);
         }
       }
+
       if (response && Array.isArray(response.logs)) setTerminalLogs(response.logs);
       else if (response && response.logs) setTerminalLogs(Array.isArray(response.logs) ? response.logs : [String(response.logs)]);
       else appendLog("Success!");
-      // If backend indicates a verification problem, prompt the user for Roli verification cookie
+
+      // If backend indicates a verification problem, clear stored cookie and prompt
       const logsArr: string[] = response?.logs ?? [];
       const joined = logsArr.join('\n').toLowerCase();
       if (!response?.success && joined.includes('verification')) {
         setShowVerificationPrompt(true);
-        // clear any stored roli verification locally to force re-entry
         setRoliVerification('');
-        appendLog('Roli verification required — enter your cookie to continue');
+        try {
+          await updateRoliVerification('');
+          appendLog('Roli verification cleared — enter your new cookie to continue');
+        } catch (e) {
+          appendLog('Roli verification required — enter your cookie to continue');
+        }
       } else {
-        // clear prompt on success
         if (response?.success) setShowVerificationPrompt(false);
       }
       return response;
@@ -425,6 +431,11 @@ function MainApp() {
       setTerminalLogs([errMsg]);
       if (errMsg.toLowerCase().includes("roli") && errMsg.toLowerCase().includes("verification")) {
         setRoliVerification("");
+        try {
+          await updateRoliVerification('');
+        } catch (e) {
+          // Ignore clear errors
+        }
         appendLog("Please enter a valid Roli Verification cookie");
       }
       return null;
@@ -460,6 +471,11 @@ function MainApp() {
       setTerminalLogs([errMsg]);
       if (errMsg.toLowerCase().includes("roli") && errMsg.toLowerCase().includes("verification")) {
         setRoliVerification("");
+        try {
+          await updateRoliVerification('');
+        } catch (e) {
+          // Ignore clear errors
+        }
         setShowVerificationPrompt(true);
         appendLog("Please enter a valid Roli Verification cookie");
       }

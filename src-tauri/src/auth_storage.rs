@@ -48,9 +48,14 @@ pub fn load_auth() -> Result<Option<AuthData>> {
 }
 
 /// Update the roli_verification for the current user.
+/// Pass an empty string to clear the cookie.
 pub fn update_roli_verification(roli_verification: String) -> Result<()> {
     let mut auth = load_auth()?.ok_or_else(|| anyhow::anyhow!("No auth data found"))?;
-    auth.roli_verification = Some(roli_verification);
+    auth.roli_verification = if roli_verification.trim().is_empty() {
+        None
+    } else {
+        Some(roli_verification)
+    };
     save_auth(&auth)?;
     eprintln!("auth_storage: updated roli_verification");
     Ok(())

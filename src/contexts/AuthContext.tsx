@@ -17,6 +17,7 @@ interface AuthContextType {
   login: (data: AuthData) => void;
   logout: () => Promise<void>;
   updateRoliVerification: (token: string) => Promise<void>;
+  reloadAuthData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -42,6 +43,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const reloadAuthData = async () => {
+    try {
+      const data = await invoke<AuthData | null>('load_auth_data');
+      setAuthData(data);
+    } catch (error) {
+      console.error('Failed to reload auth data:', error);
+      throw error;
+    }
+  };
+
   const login = (data: AuthData) => {
     setAuthData(data);
   };
@@ -58,9 +69,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateRoliVerification = async (token: string) => {
     try {
       await invoke('update_roli_verification', { roliVerification: token });
-      if (authData) {
-        setAuthData({ ...authData, roli_verification: token });
-      }
+      await reloadAuthData();
     } catch (error) {
       console.error('Failed to update roli verification:', error);
       throw error;
@@ -68,7 +77,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   return (
-    <AuthContext.Provider value={{ authData, isLoading, login, logout, updateRoliVerification }}>
+    <AuthContext.Provider value={{ authData, isLoading, login, logout, updateRoliVerification, reloadAuthData }}>
       {children}
     </AuthContext.Provider>
   );

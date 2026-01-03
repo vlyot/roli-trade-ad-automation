@@ -9,6 +9,7 @@ import StopIcon from '@mui/icons-material/Stop';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SaveIcon from '@mui/icons-material/Save';
 import { invoke } from '@tauri-apps/api/core';
+import { useAuth } from '../contexts/AuthContext';
 
 export type Advertisement = {
   id: string;
@@ -34,6 +35,7 @@ export default function AdvertisementManager({
   refreshSignal?: number;
   appendLog?: (line: string) => void;
 }) {
+  const { authData, reloadAuthData } = useAuth();
   const [ads, setAds] = useState<Advertisement[]>([]);
   const [thumbsMap, setThumbsMap] = useState<Record<string, string[]>>({});
   const [offerThumbsMap, setOfferThumbsMap] = useState<Record<string, string[]>>({});
@@ -52,20 +54,9 @@ export default function AdvertisementManager({
   const [verificationPromptSource, setVerificationPromptSource] = useState<'missing' | 'post-error' | null>(null);
   const [verificationSubmitting, setVerificationSubmitting] = useState(false);
   const [countdowns, setCountdowns] = useState<Record<string, number>>({});
-  const [authVerification, setAuthVerification] = useState<string | null>(null);
   const [runningIds, setRunningIds] = useState<string[]>([]);
 
-  // load global auth verification if present
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await invoke<any>('load_auth_data');
-        if (res && res.roli_verification) setAuthVerification(res.roli_verification as string);
-      } catch (e) {
-        // ignore
-      }
-    })();
-  }, []);
+  const authVerification = authData?.roli_verification ?? null;
 
   const refresh = async () => {
     try {
@@ -109,7 +100,7 @@ export default function AdvertisementManager({
       // persist verification globally and on the ad
       try {
         await invoke('save_global_verification', { roli_verification: verificationInput });
-        setAuthVerification(verificationInput);
+        await reloadAuthData();
       } catch (err) {
         // ignore if global save fails; still try to save ad
       }
